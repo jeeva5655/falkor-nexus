@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FalkorNexus - Autonomous Enterprise Brain & Operations Command</title>
+  <meta name="description" content="Autonomous Multi-Agent Enterprise Operations Command powered by FalkorDB graph context. Built for all 3 FalkorDB Hackathon tracks.">
+  
+  <!-- Modern Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="bg-ambient"></div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo-section">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3"/>
+          <circle cx="4" cy="12" r="2"/>
+          <circle cx="20" cy="12" r="2"/>
+          <circle cx="12" cy="4" r="2"/>
+          <circle cx="12" cy="20" r="2"/>
+          <line x1="6" y1="12" x2="9" y2="12" stroke="#fff" stroke-width="1.5"/>
+          <line x1="15" y1="12" x2="18" y2="12" stroke="#fff" stroke-width="1.5"/>
+          <line x1="12" y1="6" x2="12" y2="9" stroke="#fff" stroke-width="1.5"/>
+          <line x1="12" y1="15" x2="12" y2="18" stroke="#fff" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>FalkorNexus</h1>
+      </div>
+      <span class="brand-badge">All 3 Tracks</span>
+    </div>
+
+    <!-- Track Selector Pills -->
+    <nav class="track-nav">
+      <button class="track-btn active" id="btnTrackAll">
+        <span>🌐 Unified Multi-Track</span>
+      </button>
+      <button class="track-btn" id="btnNavTrack1" onclick="document.querySelector('[data-tab=tabTrack1]').click()">
+        <span>🕵️ Track 1: Graph Agents</span>
+      </button>
+      <button class="track-btn" id="btnNavTrack2" onclick="document.querySelector('[data-tab=tabTrack2]').click()">
+        <span>🤖 Track 2: Memory & State</span>
+      </button>
+      <button class="track-btn" id="btnNavTrack3" onclick="document.querySelector('[data-tab=tabTrack3]').click()">
+        <span>🧠 Track 3: Company Brain</span>
+      </button>
+    </nav>
+
+    <!-- Status & FalkorDB Connection -->
+    <div class="header-actions">
+      <div class="status-badge" id="statusBadge" title="Click to view FalkorDB Connection settings">
+        <span class="status-dot pulse"></span>
+        <span id="falkorModeText">FalkorDB Engine (Dual-Mode Ready)</span>
+      </div>
+      <div class="status-badge" style="cursor:default;">
+        <span style="color:var(--accent-cyan); font-weight:700;" id="nodeCount">0</span>
+        <span style="color:var(--text-muted);">nodes</span>
+        <span style="color:var(--text-muted); margin:0 2px;">•</span>
+        <span style="color:var(--accent-emerald); font-weight:700;" id="edgeCount">0</span>
+        <span style="color:var(--text-muted);">edges</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Dashboard Grid -->
+  <main class="app-container">
+    <!-- Left Column: Multi-Agent Command & Incident Stream -->
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>⚡ Multi-Agent Operations Command</span>
+        </div>
+        <span class="panel-badge">4 Coordinated Agents</span>
+      </div>
+
+      <div class="panel-body">
+        <!-- Pre-Loaded Scenarios -->
+        <div class="scenario-selector">
+          <span class="section-label">Pre-Loaded Live Scenarios</span>
+          
+          <div class="scenario-card active" id="scCard1">
+            <div class="scenario-header">
+              <span class="scenario-title">1. Critical Outage & Blast Radius Triage</span>
+              <span class="scenario-track-tag tag-t1">Tracks 1 & 3</span>
+            </div>
+            <div class="scenario-desc">PaymentGateway 500 spike -> upstream AuthService dependency -> culprit commit c3b8f19 by Sarah Chen -> mitigation.</div>
+          </div>
+
+          <div class="scenario-card" id="scCard2">
+            <div class="scenario-header">
+              <span class="scenario-title">2. Multi-Agent Memory & SOP Handoff</span>
+              <span class="scenario-track-tag tag-t2">Track 2</span>
+            </div>
+            <div class="scenario-desc">Recalls historical episodic memory sessions and triggers SEV-1 Procedural Graph Playbook steps.</div>
+          </div>
+
+          <div class="scenario-card" id="scCard3">
+            <div class="scenario-header">
+              <span class="scenario-title">3. Decision Provenance & Knowledge Lineage</span>
+              <span class="scenario-track-tag tag-t3">Track 3</span>
+            </div>
+            <div class="scenario-desc">"Why did we migrate to FalkorDB?" -> Traced to RFC-104, author Sarah Chen, and historical incident INC-732.</div>
+          </div>
+        </div>
+
+        <!-- Chat / Command Input -->
+        <div class="chat-input-container">
+          <textarea id="chatInput" placeholder="Ask questions, report incidents, or run multi-agent queries..."></textarea>
+          <div class="input-actions">
+            <div class="tenant-indicator">
+              <span>🏢 Tenant:</span>
+              <strong style="color:var(--text-primary);">nexus_corp</strong>
+            </div>
+            <button class="btn-primary" id="btnSubmitChat">
+              <span>Dispatch Agents</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Agent Stream Pipeline -->
+        <div class="pipeline-stream" id="agentStreamContainer">
+          <div style="font-size:0.78rem; color:var(--text-muted); text-align:center; padding:20px 0;">
+            Select a scenario above or type a prompt to observe the 4-agent coordination pipeline in real-time.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Center Column: Force-Directed Knowledge Graph Visualizer -->
+    <section class="panel center-panel">
+      <div class="graph-toolbar">
+        <button class="tool-btn" id="btnResetView">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          <span>Reset View</span>
+        </button>
+      </div>
+
+      <div class="graph-canvas-container">
+        <canvas id="graphCanvas"></canvas>
+      </div>
+
+      <!-- Graph Legend -->
+      <div class="graph-legend">
+        <div class="legend-item"><span class="legend-color" style="background:#00f2fe;"></span><span>Service</span></div>
+        <div class="legend-item"><span class="legend-color" style="background:#10b981;"></span><span>Person</span></div>
+        <div class="legend-item"><span class="legend-color" style="background:#8a2be2;"></span><span>Team</span></div>
+        <div class="legend-item"><span class="legend-color" style="background:#ff4b72;"></span><span>Incident</span></div>
+        <div class="legend-item"><span class="legend-color" style="background:#f59e0b;"></span><span>PullRequest</span></div>
+        <div class="legend-item"><span class="legend-color" style="background:#38bdf8;"></span><span>RFC / Decision</span></div>
+        <div class="legend-item"><span class="legend-color" style="background:#ec4899;"></span><span>Playbook</span></div>
+      </div>
+
+      <!-- Node Inspector Drawer (Click on graph) -->
+      <div class="node-inspector-drawer" id="nodeInspector">
+        <div class="inspector-header">
+          <span class="inspector-title" id="inspectTitle">Node Details</span>
+          <span class="inspector-label" id="inspectLabel">Service</span>
+        </div>
+        <div class="inspector-props" id="inspectProps"></div>
+        <div style="display:flex; gap:8px; margin-top:6px;">
+          <button class="btn-secondary" id="btnInspectBlast" style="flex:1; justify-content:center; font-size:0.75rem;">
+            💥 Compute Blast Radius
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Track Explorers & Playgrounds -->
+    <section class="panel">
+      <div class="tab-headers">
+        <button class="tab-btn active" data-tab="tabTrack1">🕵️ Track 1</button>
+        <button class="tab-btn" data-tab="tabTrack2">🤖 Track 2</button>
+        <button class="tab-btn" data-tab="tabTrack3">🧠 Track 3</button>
+        <button class="tab-btn" data-tab="tabCypher">⚡ Cypher</button>
+      </div>
+
+      <div class="panel-body">
+        <!-- Track 01 Explorer -->
+        <div class="tab-content active" id="tabTrack1">
+          <div class="algo-card">
+            <div class="algo-header">
+              <span class="algo-title">PageRank Systemic Hubs</span>
+              <span class="panel-badge">Algorithm Tool</span>
+            </div>
+            <div class="algo-list" id="pagerankList">
+              <div style="font-size:0.75rem; color:var(--text-muted);">Loading PageRank...</div>
+            </div>
+          </div>
+
+          <div class="algo-card">
+            <div class="algo-header">
+              <span class="algo-title">Betweenness Bottlenecks (SPOFs)</span>
+              <span class="panel-badge">Centrality</span>
+            </div>
+            <div class="algo-list" id="centralityList">
+              <div style="font-size:0.75rem; color:var(--text-muted);">Loading Centrality...</div>
+            </div>
+          </div>
+
+          <div class="algo-card">
+            <div class="algo-header">
+              <span class="algo-title">Model Context Protocol (MCP) Tools</span>
+              <span class="panel-badge">Registered</span>
+            </div>
+            <div style="font-size:0.74rem; color:var(--text-secondary); line-height:1.4;">
+              • <code>falkordb_cypher_query</code><br>
+              • <code>falkordb_shortest_path</code><br>
+              • <code>falkordb_blast_radius</code><br>
+              • <code>falkordb_pagerank</code><br>
+              • <code>falkordb_centrality</code><br>
+              • <code>falkordb_find_expert</code><br>
+              • <code>falkordb_decision_lineage</code><br>
+              • <code>falkordb_execute_action</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- Track 02 Explorer -->
+        <div class="tab-content" id="tabTrack2">
+          <div class="algo-card">
+            <div class="algo-header">
+              <span class="algo-title">Tri-Memory Graph Architecture</span>
+              <span class="panel-badge">FalkorDB Persisted</span>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <div class="algo-item">
+                <span>Episodic Records:</span>
+                <span class="algo-score" id="memEpisodicCount">0</span>
+              </div>
+              <div class="algo-item">
+                <span>Active Sessions:</span>
+                <span class="algo-score" id="memSessionsCount">0</span>
+              </div>
+              <div class="algo-item">
+                <span>Agent Handoffs:</span>
+                <span class="algo-score" id="memTransitionsCount">0</span>
+              </div>
+              <div class="algo-item">
+                <span>Playbooks (SOPs):</span>
+                <span class="algo-score" id="memPlaybooksCount">0</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="algo-card">
+            <div class="algo-header">
+              <span class="algo-title">Procedural SOP Workflow Chain</span>
+              <span class="panel-badge">Executable</span>
+            </div>
+            <div class="playbook-step-chain" id="playbookChain">
+              <div style="font-size:0.75rem; color:var(--text-muted);">Loading Playbook steps...</div>
+            </div>
+          </div>
+
+          <button class="btn-secondary" id="btnLearnPlaybook" style="justify-content:center;">
+            <span>➕ Dynamically Learn New Playbook SOP</span>
+          </button>
+        </div>
+
+        <!-- Track 03 Explorer -->
+        <div class="tab-content" id="tabTrack3">
+          <div class="algo-card">
+            <div class="algo-header">
+              <span class="algo-title">Subject-Matter Experts & Ownership</span>
+              <span class="panel-badge">AuthService</span>
+            </div>
+            <div class="algo-list" id="expertsList">
+              <div style="font-size:0.75rem; color:var(--text-muted);">Loading Experts...</div>
+            </div>
+          </div>
+
+          <div class="algo-card">
+            <div class="algo-header">
+              <span class="algo-title">Dynamic Knowledge Ingestion</span>
+              <span class="panel-badge">Live Event Stream</span>
+            </div>
+            <div style="font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">
+              Simulate dynamic events (PR commits, Slack messages, Jira status changes) that update the FalkorDB graph in real time.
+            </div>
+            <button class="btn-secondary" id="btnIngestCommit" style="justify-content:center; margin-top:4px;">
+              <span>🚀 Ingest Hotfix Commit into Graph</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Cypher Console Tab -->
+        <div class="tab-content" id="tabCypher">
+          <div class="cypher-editor">
+            <textarea class="cypher-input" id="cypherInput">MATCH (s:Service)-[:DEPENDS_ON]->(d:Service) RETURN s, d</textarea>
+            <div style="display:flex; justify-content:flex-end;">
+              <button class="btn-primary" id="btnRunCypher" style="padding:4px 12px; font-size:0.78rem;">
+                Run Cypher
+              </button>
+            </div>
+          </div>
+
+          <div class="query-presets">
+            <span class="section-label">Sample Cypher Queries</span>
+            <button class="preset-chip" data-cypher="MATCH (p:Person)-[:MEMBER_OF]->(t:Team) RETURN p, t">
+              Teams & Engineers: (Person)-[:MEMBER_OF]->(Team)
+            </button>
+            <button class="preset-chip" data-cypher="MATCH (s:Service)-[:DEPENDS_ON]->(d:Service) RETURN s, d">
+              Microservice Topology: (Service)-[:DEPENDS_ON]->(Service)
+            </button>
+            <button class="preset-chip" data-cypher="MATCH (inc:Incident)-[:TRIGGERED_BY]->(c:Commit)<-[:CONTAINS]-(pr:PullRequest)<-[:AUTHORED]-(p:Person) RETURN inc, p">
+              Culprit Attribution: Incident -> Commit -> PR -> Person
+            </button>
+          </div>
+
+          <div class="algo-card">
+            <div class="algo-header">
+              <span class="algo-title">Result Output</span>
+            </div>
+            <pre id="cypherOutput" style="font-family:var(--font-mono); font-size:0.68rem; color:var(--accent-cyan); max-height:160px; overflow-y:auto; background:rgba(0,0,0,0.3); padding:8px; border-radius:var(--radius-sm);"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: FalkorDB Live Connection -->
+  <div class="modal-overlay" id="connectionModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>FalkorDB Connection Settings</h3>
+        <button class="btn-close" id="btnCloseModal">&times;</button>
+      </div>
+      <div style="font-size:0.8rem; color:var(--text-secondary); line-height:1.4;">
+        Connect to your local FalkorDB Docker container or FalkorDB Cloud database instance. FalkorNexus will automatically sync all enterprise graphs, playbooks, and memory nodes!
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <label style="font-size:0.75rem; color:var(--text-muted);">FalkorDB URI</label>
+        <input type="text" id="falkorUriInput" placeholder="falkor://localhost:6379 or falkor://default:password@cloud-instance:6379" style="background:var(--bg-surface-elevated); border:1px solid var(--border-subtle); color:var(--text-primary); padding:8px; border-radius:var(--radius-sm); font-family:var(--font-mono); font-size:0.78rem; outline:none;">
+      </div>
+      <div id="connectMsg" style="font-size:0.75rem;"></div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn-primary" id="btnConnectFalkor">
+          Connect & Sync Data
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/graph_view.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
