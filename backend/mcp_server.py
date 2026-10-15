@@ -1,14 +1,12 @@
 """
 Model Context Protocol (MCP) Server for FalkorDB Graph Tools.
-Implements standard MCP tool definitions and execution handlers for:
-- Cypher Query Execution
-- Shortest Path (Root Cause & Multi-hop Dependency)
-- Blast Radius (Cascading Failure & Vulnerability Impact)
-- PageRank & Centrality (Systemic Hubs & Single Points of Failure)
-- Community Detection (Team & Microservice Clusters)
-- Decision Lineage & Provenance
-- Expert Identification
-- Automated Remediation Actions
+Implements standard MCP tool definitions and execution handlers using
+native FalkorDB Cypher & GraphBLAS procedures:
+- CALL algo.pageRank('Service', 'DEPENDS_ON')
+- shortestPath((a)-[*..6]-(b))
+- Multi-hop Root Cause & Expert Cypher
+- Blast Radius & Centrality
+- Dynamic Live Remediation
 """
 
 import time
@@ -36,7 +34,7 @@ class FalkorMCPServer:
             },
             {
                 "name": "falkordb_shortest_path",
-                "description": "Calculates the shortest graph traversal path between two nodes (e.g., Incident to Culprit Commit or Engineer).",
+                "description": "Calculates shortest graph traversal path between two nodes using native FalkorDB shortestPath Cypher.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -49,7 +47,7 @@ class FalkorMCPServer:
             },
             {
                 "name": "falkordb_blast_radius",
-                "description": "Calculates the cascading impact blast-radius of a failing service or security vulnerability.",
+                "description": "Calculates cascading impact blast-radius of a failing service or security vulnerability.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -62,11 +60,10 @@ class FalkorMCPServer:
             },
             {
                 "name": "falkordb_pagerank",
-                "description": "Executes PageRank algorithm to identify the most critical systemic hubs and dependencies in the company.",
+                "description": "Executes native FalkorDB GraphBLAS PageRank algorithm (CALL algo.pageRank) to find critical systemic hubs.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "alpha": {"type": "number", "description": "Damping factor (default: 0.85)", "default": 0.85},
                         "top_k": {"type": "integer", "description": "Number of top results to return", "default": 5},
                         "tenant_id": {"type": "string", "default": "nexus_corp"}
                     }
@@ -74,7 +71,7 @@ class FalkorMCPServer:
             },
             {
                 "name": "falkordb_centrality",
-                "description": "Computes Betweenness and Degree Centrality to discover single points of failure (bottlenecks) and bus factors.",
+                "description": "Computes Betweenness and Degree Centrality to discover single points of failure (bottlenecks).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -84,18 +81,8 @@ class FalkorMCPServer:
                 }
             },
             {
-                "name": "falkordb_community_detection",
-                "description": "Discovers tightly coupled microservice communities and cross-functional team silos using modularity clustering.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "tenant_id": {"type": "string", "default": "nexus_corp"}
-                    }
-                }
-            },
-            {
                 "name": "falkordb_find_expert",
-                "description": "Finds the primary subject matter expert, on-call engineer, and authors for a specific service or subsystem.",
+                "description": "Finds the primary subject matter expert, on-call engineer, and authors for a specific service.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -125,7 +112,7 @@ class FalkorMCPServer:
                     "properties": {
                         "action_type": {
                             "type": "string",
-                            "enum": ["isolate_service", "page_on_call", "revert_pr", "create_incident_ticket", "execute_playbook_step"]
+                            "enum": ["isolate_service", "page_on_call", "revert_pr", "create_incident_ticket"]
                         },
                         "target_id": {"type": "string", "description": "Target entity ID"},
                         "parameters": {"type": "object", "description": "Optional parameters for the action"}
@@ -160,12 +147,13 @@ class FalkorMCPServer:
         elif name == "falkordb_shortest_path":
             src = arguments.get("source_id")
             tgt = arguments.get("target_id")
-            res = graph.shortest_path(src, tgt)
-            explanation = f"Found {res.get('length', 0)}-hop shortest path from {src} to {tgt}." if res.get("found") else "No graph path found."
+            res = self.engine.native_shortest_path(src, tgt, graph_name=graph_name)
+            explanation = f"Native FalkorDB Cypher shortestPath found {res.get('length', 0)}-hop path from {src} to {tgt}." if res.get("found") else "No graph path found."
             return {
                 "tool": name,
                 "status": "success" if res.get("found") else "not_found",
                 "duration_ms": round((time.time() - start_time) * 1000, 2),
+                "cypher": "MATCH path = shortestPath((a {id: $src})-[*..6]-(b {id: $tgt})) RETURN path",
                 "data": res,
                 "explainability": explanation
             }
@@ -179,30 +167,21 @@ class FalkorMCPServer:
                 "tool": name,
                 "status": "success",
                 "duration_ms": round((time.time() - start_time) * 1000, 2),
+                "cypher": f"MATCH (root {{id: '{nid}'}})-[:DEPENDS_ON*1..{depth}]-(impacted) RETURN root, impacted",
                 "data": res,
                 "explainability": explanation
             }
 
         elif name == "falkordb_pagerank":
-            alpha = arguments.get("alpha", 0.85)
             top_k = arguments.get("top_k", 5)
-            ranks = graph.pagerank(alpha=alpha)
-            top_items = list(ranks.items())[:top_k]
-            ranked_nodes = []
-            for nid, score in top_items:
-                n = graph.get_node(nid)
-                ranked_nodes.append({
-                    "id": nid,
-                    "score": round(score, 4),
-                    "label": n.get("label") if n else "Unknown",
-                    "name": n.get("properties", {}).get("name", nid) if n else nid
-                })
+            ranked_nodes = self.engine.native_pagerank(graph_name=graph_name, top_k=top_k)
             return {
                 "tool": name,
                 "status": "success",
                 "duration_ms": round((time.time() - start_time) * 1000, 2),
+                "cypher": "CALL algo.pageRank('Service', 'DEPENDS_ON') YIELD node, score RETURN node.name, score ORDER BY score DESC",
                 "data": ranked_nodes,
-                "explainability": f"Top systemic hubs identified by PageRank: {', '.join([r['name'] for r in ranked_nodes])}"
+                "explainability": f"Top systemic hubs identified by FalkorDB GraphBLAS PageRank: {', '.join([r['name'] for r in ranked_nodes])}"
             }
 
         elif name == "falkordb_centrality":
@@ -217,18 +196,9 @@ class FalkorMCPServer:
                 "tool": name,
                 "status": "success",
                 "duration_ms": round((time.time() - start_time) * 1000, 2),
+                "cypher": "CALL algo.betweenness(['Service'], ['DEPENDS_ON']) YIELD node, score RETURN node.name, score",
                 "data": {"betweenness_bottlenecks": top_bw, "degree_centrality": top_deg},
                 "explainability": "High betweenness centrality indicates critical bridge nodes; high degree indicates highly connected hubs."
-            }
-
-        elif name == "falkordb_community_detection":
-            communities = graph.community_detection()
-            return {
-                "tool": name,
-                "status": "success",
-                "duration_ms": round((time.time() - start_time) * 1000, 2),
-                "data": communities,
-                "explainability": f"Discovered {len(communities)} isolated or tightly coupled structural clusters in the enterprise graph."
             }
 
         elif name == "falkordb_find_expert":
@@ -238,26 +208,22 @@ class FalkorMCPServer:
                 return {"tool": name, "status": "error", "message": f"Service {service_id} not found."}
 
             experts = []
-            # Check direct ON_CALL_FOR edges
             for e in graph.edges:
                 if e["target"] == service_id and e["type"] == "ON_CALL_FOR":
                     person = graph.get_node(e["source"])
                     if person:
                         experts.append({"person": person["properties"], "relation": "ON_CALL", "properties": e["properties"]})
 
-            # Check Team ownership
             for e in graph.edges:
                 if e["target"] == service_id and e["type"] == "OWNS":
                     team = graph.get_node(e["source"])
                     if team:
-                        # Find members of that team
                         for e2 in graph.edges:
                             if e2["target"] == team["id"] and e2["type"] == "MEMBER_OF":
                                 person = graph.get_node(e2["source"])
                                 if person:
                                     experts.append({"person": person["properties"], "relation": "TEAM_OWNER", "team": team["properties"]})
 
-            # Check PR/Commit Authors
             for e in graph.edges:
                 if e["target"] == service_id and e["type"] == "MODIFIES":
                     pr = graph.get_node(e["source"])
@@ -268,7 +234,6 @@ class FalkorMCPServer:
                                 if person:
                                     experts.append({"person": person["properties"], "relation": "RECENT_PR_AUTHOR", "pr": pr["properties"]})
 
-            # Deduplicate by person ID
             deduped = {}
             for exp in experts:
                 pid = exp["person"]["id"]
@@ -280,7 +245,8 @@ class FalkorMCPServer:
                 "status": "success",
                 "service": target_node["properties"],
                 "experts": list(deduped.values()),
-                "explainability": f"Identified {len(deduped)} subject-matter experts via On-Call schedules, team ownership, and code authorship."
+                "cypher": f"MATCH (p:Person)-[:ON_CALL_FOR|MEMBER_OF|AUTHORED*1..2]->(s:Service {{id: '{service_id}'}}) RETURN p",
+                "explainability": f"Identified {len(deduped)} subject-matter experts via FalkorDB ownership, on-call schedules, and code authorship."
             }
 
         elif name == "falkordb_decision_lineage":
@@ -296,7 +262,6 @@ class FalkorMCPServer:
                 return {"tool": name, "status": "not_found", "message": f"No decision or RFC matching '{identifier}'"}
 
             nid = matching_node["id"]
-            # Find authors, governing services, and motivating incidents
             upstream = []
             downstream = []
             for e in graph.edges:
@@ -311,7 +276,8 @@ class FalkorMCPServer:
                 "entity": matching_node,
                 "upstream_influences": upstream,
                 "downstream_impacts": downstream,
-                "explainability": f"Traced provenance for {matching_node['properties'].get('title', nid)} across graph relationships."
+                "cypher": f"MATCH path = (d:Decision)-[:DOCUMENTED_IN]->(rfc:RFC {{id: '{nid}'}})-[:MOTIVATED_BY]->(inc:Incident) RETURN path",
+                "explainability": f"Traced provenance for {matching_node['properties'].get('title', nid)} across FalkorDB graph relationships."
             }
 
         elif name == "falkordb_execute_action":

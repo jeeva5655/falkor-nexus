@@ -49,7 +49,7 @@ class AgentOrchestrator:
         self.memory_managers["episodic"].create_or_get_session(session_id, user_id="operator_user", tenant_id=tenant_id)
 
         # 1. Triage Agent
-        triage_out = self.triage.run(user_query, session_id)
+        triage_out = self.triage.run(user_query, session_id, tenant_id=tenant_id)
         agent_steps.append(triage_out)
         self._record_state_handoff(session_id, "User", "TriageAgent", triage_out["payload"], tenant_id)
 

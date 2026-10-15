@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Official FalkorDB Graph Engine (v6.0 with GraphBLAS & Vector Indexing)
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: falkornexus-falkordb
+    ports:
+      - "6379:6379"
+    volumes:
+      - falkordb_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # FalkorNexus Multi-Agent Enterprise Operations Command
+  web:
+    build: .
+    container_name: falkornexus-web
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
+      - DEFAULT_TENANT=nexus_corp
+      - DEBUG=False
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  falkordb_data:
+    driver: local
