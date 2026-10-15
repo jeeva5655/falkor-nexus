@@ -21,15 +21,19 @@ class Settings:
     FALKORDB_PASSWORD: str = os.getenv("FALKORDB_PASSWORD", "")
     FALKORDB_URL: str = os.getenv("FALKORDB_URL", "")
     
+    # LLM Settings (OpenAI / Ollama / Gemini / LiteLLM)
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o")
+    OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.1")
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    
     # Default Multi-tenant settings
     DEFAULT_TENANT: str = os.getenv("DEFAULT_TENANT", "nexus_corp")
     
     @classmethod
     def get_graph_name(cls, tenant_id: str, graph_type: str = "brain") -> str:
-        """
-        Generates FalkorDB graph names using multi-graph topology.
-        e.g. tenant_nexus_corp_brain, tenant_nexus_corp_memory
-        """
         clean_tenant = tenant_id.strip().lower().replace("-", "_")
         return f"tenant_{clean_tenant}_{graph_type}"
 

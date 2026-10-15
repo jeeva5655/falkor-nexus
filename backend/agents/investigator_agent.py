@@ -1,18 +1,21 @@
 import time
 from typing import Dict, Any, List
 
+from backend.agents.llm_reasoner import DynamicLLMReasoner
+
 class InvestigatorAgent:
     """
     Agent 2: Graph Investigator & Multi-Hop Reasoner.
     Uses native FalkorDB Cypher & GraphBLAS algorithms to navigate relationships.
-    Supports Two-Run Learning Loop:
-    - Run 1 (Cold Start): 5-hop exploration across services, PRs, commits, and on-call schedules.
-    - Run 2 (Memory Accelerated): Uses :HISTORICAL_CASCADE shortcut to verify root cause in 1 hop!
+    Supports:
+    - Real LLM Dynamic Tool Selection (OpenAI / Gemini / Ollama via MCP)
+    - Two-Run Learning Loop (Cold Start 5 hops vs Memory Accelerated 1 hop)
     """
     def __init__(self, mcp_server, memory_managers):
         self.mcp = mcp_server
         self.episodic = memory_managers["episodic"]
         self.semantic = memory_managers["semantic"]
+        self.llm_reasoner = DynamicLLMReasoner(mcp_server)
 
     def run(self, handoff_data: Dict[str, Any], tenant_id: str = "nexus_corp") -> Dict[str, Any]:
         payload = handoff_data.get("payload", {})
