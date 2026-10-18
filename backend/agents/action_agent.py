@@ -76,10 +76,14 @@ class ActionAgent:
             ]
 
         elif intent == "EXPERTISE_DISCOVERY":
+            experts = evidence.get("experts", [])
             citations = [
-                {"label": "Primary On-Call", "id": "sarah_chen", "title": "Sarah Chen (IAM Lead Architect)"},
-                {"label": "Team Owner", "id": "team_auth", "title": "Team Identity & Access Management (#team-iam)"},
-                {"label": "Secondary On-Call", "id": "alex_rivera", "title": "Alex Rivera (Staff SRE)"}
+                {
+                    "label": exp.get("relation", "Expert"),
+                    "id": exp["person"]["id"],
+                    "title": f"{exp['person']['name']} ({exp['person'].get('role', 'Engineer')})"
+                }
+                for exp in experts if exp.get("person")
             ]
 
         else:

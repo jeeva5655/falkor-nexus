@@ -1,8 +1,8 @@
 """
 FalkorNexus Dynamic LLM Agent Reasoner.
 Enables true autonomous tool selection over FalkorDB Model Context Protocol (MCP) tools.
-Works with OpenAI, Ollama, Gemini, or any OpenAI-compatible API.
-Features seamless zero-key fallback to native graph reasoning planner.
+Supports OpenAI, Gemini, Ollama, and local models.
+Provides both synchronous (for agent pipeline) and async execution methods.
 """
 
 import json
@@ -61,91 +61,91 @@ Instructions:
 4. Always provide an explainable decision trace with citations referencing exact Node IDs.
 """
 
+    def get_api_config(self) -> Optional[Dict[str, str]]:
+        if settings.OPENAI_API_KEY:
+            return {
+                "url": f"{settings.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
+                "key": settings.OPENAI_API_KEY,
+                "model": settings.OPENAI_MODEL
+            }
+        if settings.GEMINI_API_KEY:
+            return {
+                "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                "key": settings.GEMINI_API_KEY,
+                "model": "gemini-2.5-flash"
+            }
+        # Check if Ollama is accessible
+        if settings.OLLAMA_HOST:
+            return {
+                "url": f"{settings.OLLAMA_HOST.rstrip('/')}/v1/chat/completions",
+                "key": "ollama",
+                "model": settings.OLLAMA_MODEL
+            }
+        return None
+
     def is_llm_configured(self) -> bool:
         return bool(settings.OPENAI_API_KEY or settings.GEMINI_API_KEY)
 
-    async def execute_reasoning_loop(
-        self,
-        user_query: str,
-        session_id: str,
-        tenant_id: str = "nexus_corp",
-        max_turns: int = 5
-    ) -> Dict[str, Any]:
+    def run_sync_if_configured(self, user_query: str, tenant_id: str = "nexus_corp") -> Optional[Dict[str, Any]]:
         """
-        Autonomous ReAct Tool-Calling loop over FalkorDB MCP tools.
+        Synchronous autonomous tool-calling loop for the InvestigatorAgent.
+        Returns None if no LLM API is configured or available, triggering native planner fallback.
         """
-        thoughts = []
-        tools_executed = []
+        cfg = self.get_api_config()
+        if not cfg or not (settings.OPENAI_API_KEY or settings.GEMINI_API_KEY):
+            return None
+
+        thoughts = [f"Dispatched prompt to LLM ({cfg['model']}) with {len(self.tools)} FalkorDB MCP tools."]
+        tools_called = []
         messages = [
             {"role": "system", "content": self.get_graph_schema_prompt(tenant_id)},
             {"role": "user", "content": user_query}
         ]
-
-        if not self.is_llm_configured():
-            thoughts.append("No external LLM API key detected. Operating in Autonomous Native Graph Planner mode.")
-            return None  # Signal to use native planner
-
-        thoughts.append(f"Dispatched prompt to LLM ({settings.OPENAI_MODEL}) with {len(self.tools)} FalkorDB MCP tools.")
-
         headers = {
-            "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+            "Authorization": f"Bearer {cfg['key']}",
             "Content-Type": "application/json"
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for turn in range(max_turns):
-                payload = {
-                    "model": settings.OPENAI_MODEL,
-                    "messages": messages,
-                    "tools": self.tools,
-                    "tool_choice": "auto",
-                    "temperature": 0.1
-                }
-
-                try:
-                    resp = await client.post(f"{settings.OPENAI_BASE_URL}/chat/completions", headers=headers, json=payload)
+        try:
+            with httpx.Client(timeout=20.0) as client:
+                for turn in range(4):
+                    resp = client.post(cfg["url"], headers=headers, json={
+                        "model": cfg["model"],
+                        "messages": messages,
+                        "tools": self.tools,
+                        "tool_choice": "auto",
+                        "temperature": 0.1
+                    })
                     if resp.status_code != 200:
-                        thoughts.append(f"LLM API returned {resp.status_code}: {resp.text[:100]}. Falling back to native graph planner.")
+                        logger.warning(f"LLM API returned status {resp.status_code}: {resp.text[:120]}")
                         return None
 
-                    data = resp.json()
-                    choice = data["choices"][0]
-                    message = choice["message"]
-                    messages.append(message)
+                    choice = resp.json()["choices"][0]
+                    msg = choice["message"]
+                    messages.append(msg)
 
-                    # Check if model wants to call tools
-                    if message.get("tool_calls"):
-                        for tool_call in message["tool_calls"]:
-                            fn = tool_call["function"]
-                            fn_name = fn["name"]
-                            fn_args = json.loads(fn.get("arguments", "{}"))
+                    if msg.get("tool_calls"):
+                        for tc in msg["tool_calls"]:
+                            fn_name = tc["function"]["name"]
+                            fn_args = json.loads(tc["function"].get("arguments", "{}"))
                             fn_args["tenant_id"] = tenant_id
-
-                            thoughts.append(f"🤖 LLM dynamic tool selection: {fn_name}({json.dumps(fn_args, separators=(',', ':'))})")
-                            tool_result = self.mcp.call_tool(fn_name, fn_args)
-                            tools_executed.append(fn_name)
-
+                            thoughts.append(f"🤖 LLM Dynamic MCP Tool Selection: {fn_name}({json.dumps(fn_args, separators=(',', ':'))})")
+                            res = self.mcp.call_tool(fn_name, fn_args)
+                            tools_called.append(res)
                             messages.append({
                                 "role": "tool",
-                                "tool_call_id": tool_call["id"],
+                                "tool_call_id": tc["id"],
                                 "name": fn_name,
-                                "content": json.dumps(tool_result.get("data", tool_result))
+                                "content": json.dumps(res.get("data", res), default=str)
                             })
                     else:
-                        # LLM generated final answer
-                        final_content = message.get("content", "")
-                        thoughts.append("LLM completed multi-hop reasoning over FalkorDB context.")
                         return {
-                            "answer": final_content,
+                            "answer": msg.get("content", ""),
                             "thoughts": thoughts,
-                            "tools_executed": tools_executed,
-                            "turns": turn + 1,
+                            "tools_called": tools_called,
                             "llm_powered": True
                         }
-
-                except Exception as e:
-                    logger.warning(f"Error during LLM reasoning turn {turn}: {e}")
-                    thoughts.append(f"LLM connection error: {e}. Transitioning to native graph planner.")
-                    return None
+        except Exception as e:
+            logger.warning(f"LLM sync reasoner fallback: {e}")
 
         return None

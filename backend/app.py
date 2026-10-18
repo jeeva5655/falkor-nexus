@@ -34,6 +34,8 @@ orchestrator = AgentOrchestrator(mcp_server, memory_managers, engine)
 default_graph_name = f"tenant_{settings.DEFAULT_TENANT}_brain"
 default_graph = engine.get_or_create_graph(default_graph_name)
 seed_result = seed_enterprise_graph(default_graph)
+if engine.is_connected:
+    engine.sync_to_live_falkordb(default_graph_name)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -419,6 +421,28 @@ def inject_chaos_webhook(tenant_id: str = settings.DEFAULT_TENANT):
         "timestamp": now
     })
     g.add_edge("alex_rivera", slack_id, "SENT", {})
+
+    if engine.is_connected and engine.falkordb_client:
+        try:
+            f_graph = engine.falkordb_client.select_graph(g_name)
+            f_graph.query("""
+                MERGE (pr:PullRequest {id: $pr_id})
+                SET pr.number = 510, pr.title = 'fix(billing): tighten token bucket burst rate to 500 req/s',
+                    pr.status = 'MERGED', pr.merged_at = 'Just now (Live Webhook)', pr.author_id = 'alex_rivera',
+                    pr.risk_score = 0.72, pr.changes_summary = 'Updated rate limiter bucket to 500 req/s to prevent downstream connection exhaustion.'
+                MERGE (c:Commit {id: $commit_id})
+                SET c.hash = 'b82e14', c.message = 'fix(limiter): restrict ledger burst capacity', c.timestamp = $now, c.author_id = 'alex_rivera'
+                MERGE (msg:SlackMessage {id: $slack_id})
+                SET msg.channel = '#eng-billing', msg.sender = 'alex_rivera', msg.text = 'Heads up: PR #510 merged into LedgerDB. New 500 req/s rate limits are now live.', msg.timestamp = $now
+                WITH pr, c, msg
+                MATCH (p:Person {id: 'alex_rivera'}), (s:Service {id: 'service_ledger'})
+                MERGE (p)-[:AUTHORED {created_at: $now}]->(pr)
+                MERGE (pr)-[:MODIFIES {files_changed: 4, lines_added: 80}]->(s)
+                MERGE (pr)-[:CONTAINS]->(c)
+                MERGE (p)-[:SENT]->(msg)
+            """, {"pr_id": pr_id, "commit_id": commit_id, "slack_id": slack_id, "now": now})
+        except Exception as e:
+            logging.getLogger("falkordb_engine").warning(f"Error syncing chaos webhook to live FalkorDB: {e}")
 
     return {
         "status": "chaos_injected",

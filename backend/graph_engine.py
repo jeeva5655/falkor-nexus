@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 from typing import Dict, List, Any, Optional, Tuple
@@ -11,6 +12,47 @@ try:
     FALKORDB_AVAILABLE = True
 except ImportError:
     FALKORDB_AVAILABLE = False
+
+
+def _serialize_falkor_val(val: Any) -> Any:
+    """Recursively serializes FalkorDB native objects to JSON-serializable structures."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float, str, bool)):
+        return val
+    if isinstance(val, (list, tuple)):
+        return [_serialize_falkor_val(v) for v in val]
+    if isinstance(val, dict):
+        return {k: _serialize_falkor_val(v) for k, v in val.items()}
+    # FalkorDB Node object
+    if hasattr(val, "properties") and hasattr(val, "labels"):
+        return {
+            "id": getattr(val, "id", None),
+            "labels": getattr(val, "labels", []),
+            "properties": _serialize_falkor_val(val.properties)
+        }
+    # FalkorDB Edge/Relation object
+    if hasattr(val, "relation") and hasattr(val, "properties"):
+        return {
+            "relation": getattr(val, "relation", ""),
+            "src_node": getattr(val, "src_node", None),
+            "dest_node": getattr(val, "dest_node", None),
+            "properties": _serialize_falkor_val(val.properties)
+        }
+    return str(val)
+
+
+def _sanitize_falkor_props(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensures nested lists/dicts are serialized to JSON strings since Cypher properties require scalar values."""
+    safe = {}
+    for k, v in props.items():
+        if isinstance(v, (dict, list)):
+            safe[k] = json.dumps(v)
+        elif v is None:
+            continue
+        else:
+            safe[k] = v
+    return safe
 
 
 class FalkorDBLocalCypherEmulator:
@@ -266,12 +308,13 @@ class GraphEngine:
                 f_graph = self.falkordb_client.select_graph(graph_name)
                 res = f_graph.query(cypher, params or {})
                 duration_ms = (time.time() - start_time) * 1000
+                raw_results = [row for row in res.result_set] if hasattr(res, "result_set") else []
                 return {
                     "source": "falkordb_native_graphblas",
                     "graph": graph_name,
                     "cypher": cypher,
                     "duration_ms": round(duration_ms, 2),
-                    "results": [row for row in res.result_set] if hasattr(res, "result_set") else []
+                    "results": _serialize_falkor_val(raw_results)
                 }
             except Exception as e:
                 logger.warning(f"FalkorDB query fallback to local engine: {e}")
@@ -327,6 +370,7 @@ class GraphEngine:
         Uses FalkorDB native Cypher shortestPath function:
         MATCH path = shortestPath((a {id: $src})-[*..6]-(b {id: $tgt})) RETURN path
         """
+        g = self.get_or_create_graph(graph_name)
         if self.is_connected and self.falkordb_client:
             try:
                 cypher = """
@@ -337,17 +381,26 @@ class GraphEngine:
                 if res.result_set and len(res.result_set) > 0:
                     path_ids = res.result_set[0][0]
                     hops = res.result_set[0][1]
+                    path_nodes = [g.get_node(nid) for nid in path_ids if g.get_node(nid)]
+                    path_edges = []
+                    for i in range(len(path_ids) - 1):
+                        u, v = path_ids[i], path_ids[i+1]
+                        for e in g.edges:
+                            if (e["source"] == u and e["target"] == v) or (e["source"] == v and e["target"] == u):
+                                path_edges.append(e)
+                                break
                     return {
                         "found": True,
                         "length": hops,
                         "path": path_ids,
+                        "nodes": path_nodes,
+                        "edges": path_edges,
                         "engine": "FalkorDB GraphBLAS Native Cypher"
                     }
             except Exception as e:
                 logger.warning(f"Native shortestPath Cypher fallback: {e}")
 
         # Local calculation
-        g = self.get_or_create_graph(graph_name)
         return g.shortest_path(source_id, target_id)
 
     # Native Multi-hop Root Cause Cypher Query
@@ -381,7 +434,7 @@ class GraphEngine:
 
         for node_id, node_data in g.nodes.items():
             label = node_data.get("label", "Node")
-            props = node_data.get("properties", {})
+            props = _sanitize_falkor_props(node_data.get("properties", {}))
             cypher = f"MERGE (n:{label} {{id: $id}}) SET n += $props"
             try:
                 f_graph.query(cypher, {"id": node_id, "props": props})

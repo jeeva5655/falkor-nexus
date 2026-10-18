@@ -31,8 +31,14 @@ class InvestigatorAgent:
         investigation_evidence = {}
         subgraph_nodes = []
         subgraph_edges = []
-
         thought_log.append(f"Investigator Agent activated. Intent: {intent}, Target: {target_entity}")
+
+        # Execute dynamic LLM reasoner loop if configured (OpenAI / Gemini / Ollama)
+        llm_out = self.llm_reasoner.run_sync_if_configured(user_query, tenant_id=tenant_id)
+        if llm_out:
+            thought_log.extend(llm_out.get("thoughts", []))
+            for tc in llm_out.get("tools_called", []):
+                tools_called.append(tc)
 
         if intent == "OUTAGE_TRIAGE":
             if is_memory_accelerated and learned_shortcut:
@@ -142,11 +148,23 @@ class InvestigatorAgent:
             thought_log.append(f"Tool Call: falkordb_find_expert(service_id='{target_svc}')")
             expert_res = self.mcp.call_tool("falkordb_find_expert", {"service_id": target_svc, "tenant_id": tenant_id})
             tools_called.append(expert_res)
-            investigation_evidence["experts"] = expert_res.get("experts", [])
+            experts_list = expert_res.get("experts", [])
+            investigation_evidence["experts"] = experts_list
+
+            svc_node = self.mcp.engine.get_or_create_graph(f"tenant_{tenant_id}_brain").get_node(target_svc)
+            if svc_node:
+                subgraph_nodes.append(svc_node)
+
+            expert_summaries = []
+            for exp in experts_list:
+                p = exp.get("person", {})
+                rel = exp.get("relation", "EXPERT")
+                pr_info = f" via PR #{exp['pr']['number']} ({exp['pr']['title']})" if exp.get("pr") else ""
+                expert_summaries.append(f"{p.get('name')} ({p.get('role')} - {rel}{pr_info})")
 
             synthesis = (
-                f"Identified primary owners and experts for {target_svc}: Primary On-Call and Lead Architect is "
-                f"Sarah Chen (Team Identity & Access Management). Alex Rivera is secondary on-call."
+                f"Identified {len(experts_list)} verified experts/owners for {target_svc} via FalkorDB: "
+                + ("; ".join(expert_summaries) if expert_summaries else "No direct owner found.")
             )
 
         else: # General Search / Blast Radius Audit
