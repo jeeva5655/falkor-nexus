@@ -32,7 +32,7 @@ Select all three:
 * **Demo Video File:** Located locally at `falkornexus_demo_walkthrough.mp4` (1m 37s, 1080p Full HD with Audio Narration)
   * *Upload this MP4 to YouTube (as Unlisted) or Loom / Google Drive and paste the public link here.*
 * **Blog Post URL (AirPods 5 Side Prize):**
-  * *Publish `BLOG_POST.md` on Dev.to or Medium and paste your published article link here.*
+  * `https://dev.to/jeeva5655/how-we-built-a-self-healing-multi-agent-company-brain-on-falkordb-and-why-vector-rag-failed-us-4ana`
 
 ---
 
