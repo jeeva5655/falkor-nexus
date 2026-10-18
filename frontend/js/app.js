@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await checkSystemHealth();
   await loadGraphData();
+  await loadTrack1Algorithms();
   setupTabNavigation();
   setupScenarioButtons();
   setupTwoRunLoop();
@@ -355,6 +356,7 @@ function handleNodeSelection(node) {
 function setupTabNavigation() {
   const tabBtns = document.querySelectorAll('.tab-btn');
   const contents = document.querySelectorAll('.tab-content');
+  const navTrackBtns = document.querySelectorAll('.track-btn');
 
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -368,6 +370,17 @@ function setupTabNavigation() {
       if (target === 'tabTrack1') loadTrack1Algorithms();
       if (target === 'tabTrack2') loadTrack2Memory();
       if (target === 'tabTrack3') loadTrack3CompanyBrain();
+    });
+  });
+
+  navTrackBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      navTrackBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (btn.id === 'btnTrackAll') {
+        visualizer.clearHighlights();
+        visualizer.resetView();
+      }
     });
   });
 }

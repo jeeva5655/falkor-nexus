@@ -97,6 +97,7 @@ class FalkorDBLocalCypherEmulator:
         return self.nodes.get(node_id)
 
     def query(self, cypher: str, params: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        import re
         cypher_clean = cypher.strip().replace("\n", " ")
         results = []
 
@@ -107,11 +108,115 @@ class FalkorDBLocalCypherEmulator:
             return results
 
         # Simple label query: MATCH (n:Label) RETURN n
-        if "MATCH (n:" in cypher_clean:
-            label_part = cypher_clean.split("MATCH (n:")[1].split(")")[0].strip()
-            node_ids = self.labels.get(label_part, set())
-            for nid in node_ids:
-                results.append({"node": self.nodes[nid]})
+        if re.search(r"MATCH\s*\(\w+:(\w+)\)\s*RETURN", cypher_clean, re.IGNORECASE):
+            m = re.search(r"MATCH\s*\(\w+:(\w+)\)", cypher_clean, re.IGNORECASE)
+            if m:
+                label_part = m.group(1).strip()
+                node_ids = self.labels.get(label_part, set())
+                for nid in node_ids:
+                    results.append({"node": self.nodes[nid]})
+                return results
+
+        # 1. Multi-hop: Incident -> Commit <- PR <- Person
+        if "Incident" in cypher_clean and "Commit" in cypher_clean and "PullRequest" in cypher_clean and "Person" in cypher_clean:
+            for inc_id in self.labels.get("Incident", set()):
+                inc_node = self.nodes.get(inc_id)
+                for e1 in self.edges:
+                    if e1["source"] == inc_id and e1["type"] == "TRIGGERED_BY":
+                        c_node = self.nodes.get(e1["target"])
+                        if not c_node:
+                            continue
+                        for e2 in self.edges:
+                            if e2["target"] == c_node["id"] and e2["type"] == "CONTAINS":
+                                pr_node = self.nodes.get(e2["source"])
+                                if not pr_node:
+                                    continue
+                                for e3 in self.edges:
+                                    if e3["target"] == pr_node["id"] and e3["type"] == "AUTHORED":
+                                        p_node = self.nodes.get(e3["source"])
+                                        if p_node:
+                                            results.append({
+                                                "inc": inc_node,
+                                                "commit": c_node,
+                                                "pr": pr_node,
+                                                "p": p_node
+                                            })
+            if results:
+                return results
+
+        # 2. Multi-hop: Service <- PR <- Person
+        if "MODIFIES" in cypher_clean and "AUTHORED" in cypher_clean:
+            for s_id in self.labels.get("Service", set()):
+                s_node = self.nodes.get(s_id)
+                for e1 in self.edges:
+                    if e1["target"] == s_id and e1["type"] == "MODIFIES":
+                        pr_node = self.nodes.get(e1["source"])
+                        if not pr_node:
+                            continue
+                        for e2 in self.edges:
+                            if e2["target"] == pr_node["id"] and e2["type"] == "AUTHORED":
+                                p_node = self.nodes.get(e2["source"])
+                                if p_node:
+                                    results.append({
+                                        "s": s_node,
+                                        "pr": pr_node,
+                                        "p": p_node
+                                    })
+            if results:
+                return results
+
+        # 3. Single-hop directed: (a:Label1)-[:REL]->(b:Label2)
+        match_forward = re.search(
+            r"MATCH\s*\((\w+)(?::(\w+))?\)\s*-\s*\[:?(\w+)?\]\s*->\s*\((\w+)(?::(\w+))?\)",
+            cypher_clean,
+            re.IGNORECASE
+        )
+        if match_forward:
+            var_a, lbl_a, rel_type, var_b, lbl_b = match_forward.groups()
+            for e in self.edges:
+                if rel_type and e["type"] != rel_type:
+                    continue
+                node_a = self.nodes.get(e["source"])
+                node_b = self.nodes.get(e["target"])
+                if not node_a or not node_b:
+                    continue
+                if lbl_a and node_a.get("label") != lbl_a:
+                    continue
+                if lbl_b and node_b.get("label") != lbl_b:
+                    continue
+                results.append({
+                    var_a: node_a,
+                    var_b: node_b,
+                    "rel": e["type"],
+                    "properties": e.get("properties", {})
+                })
+            return results
+
+        # 4. Single-hop reverse: (a:Label1)<-[:REL]-(b:Label2)
+        match_reverse = re.search(
+            r"MATCH\s*\((\w+)(?::(\w+))?\)\s*<-\s*\[:?(\w+)?\]\s*-\s*\((\w+)(?::(\w+))?\)",
+            cypher_clean,
+            re.IGNORECASE
+        )
+        if match_reverse:
+            var_a, lbl_a, rel_type, var_b, lbl_b = match_reverse.groups()
+            for e in self.edges:
+                if rel_type and e["type"] != rel_type:
+                    continue
+                node_b = self.nodes.get(e["source"])
+                node_a = self.nodes.get(e["target"])
+                if not node_a or not node_b:
+                    continue
+                if lbl_a and node_a.get("label") != lbl_a:
+                    continue
+                if lbl_b and node_b.get("label") != lbl_b:
+                    continue
+                results.append({
+                    var_a: node_a,
+                    var_b: node_b,
+                    "rel": e["type"],
+                    "properties": e.get("properties", {})
+                })
             return results
 
         # Fallback return nodes summary

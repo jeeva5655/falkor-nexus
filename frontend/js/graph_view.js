@@ -56,6 +56,7 @@ class GraphVisualizer {
     const rect = this.canvas.parentElement.getBoundingClientRect();
     this.canvas.width = rect.width * window.devicePixelRatio;
     this.canvas.height = rect.height * window.devicePixelRatio;
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
     this.width = rect.width;
     this.height = rect.height;
