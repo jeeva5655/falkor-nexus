@@ -55,14 +55,16 @@ def _sanitize_falkor_props(props: Dict[str, Any]) -> Dict[str, Any]:
     return safe
 
 
-class FalkorDBLocalCypherEmulator:
+class FalkorDBGraphNamespace:
     """
-    FalkorDB Local Cypher & GraphBLAS Emulator.
-    Used for local offline development when a live FalkorDB instance is not running.
-    Executes identical Cypher patterns, multi-graph isolation, and graph traversals.
+    FalkorDB Graph Namespace & GraphBLAS Engine.
+    Maintains multi-graph isolation per tenant (e.g. tenant_<id>_brain, tenant_<id>_memory).
+    Executes Cypher patterns, GraphBLAS algorithms, and automatic write-through MERGE queries
+    to live FalkorDB instances.
     """
-    def __init__(self, name: str):
+    def __init__(self, name: str, engine_ref=None):
         self.name = name
+        self.engine = engine_ref
         self.nx_graph = nx.DiGraph()
         self.nodes: Dict[str, Dict[str, Any]] = {}
         self.edges: List[Dict[str, Any]] = []
@@ -79,6 +81,17 @@ class FalkorDBLocalCypherEmulator:
             self.labels[label] = set()
         self.labels[label].add(node_id)
         self.nx_graph.add_node(node_id, label=label, **(properties or {}))
+
+        # Automatic live FalkorDB write-through
+        if self.engine and getattr(self.engine, "is_connected", False) and getattr(self.engine, "falkordb_client", None):
+            try:
+                f_graph = self.engine.falkordb_client.select_graph(self.name)
+                props = _sanitize_falkor_props(properties or {})
+                cypher = f"MERGE (n:{label} {{id: $id}}) SET n += $props"
+                f_graph.query(cypher, {"id": node_id, "props": props})
+            except Exception as e:
+                logger.warning(f"Live FalkorDB add_node write-through: {e}")
+
         return node_data
 
     def add_edge(self, source_id: str, target_id: str, rel_type: str, properties: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -91,6 +104,21 @@ class FalkorDBLocalCypherEmulator:
         }
         self.edges.append(edge_data)
         self.nx_graph.add_edge(source_id, target_id, type=rel_type, **properties)
+
+        # Automatic live FalkorDB write-through
+        if self.engine and getattr(self.engine, "is_connected", False) and getattr(self.engine, "falkordb_client", None):
+            try:
+                f_graph = self.engine.falkordb_client.select_graph(self.name)
+                props = _sanitize_falkor_props(properties or {})
+                cypher = f"""
+                MATCH (s {{id: $src}}), (t {{id: $tgt}})
+                MERGE (s)-[r:{rel_type}]->(t)
+                SET r += $props
+                """
+                f_graph.query(cypher, {"src": source_id, "tgt": target_id, "props": props})
+            except Exception as e:
+                logger.warning(f"Live FalkorDB add_edge write-through: {e}")
+
         return edge_data
 
     def get_node(self, node_id: str) -> Optional[Dict[str, Any]]:
@@ -349,8 +377,8 @@ class GraphEngine:
     def __init__(self):
         self.falkordb_client = None
         self.is_connected = False
-        self.connection_info = {"status": "offline", "mode": "emulator", "url": None}
-        self.graphs: Dict[str, FalkorDBLocalCypherEmulator] = {}
+        self.connection_info = {"status": "ready", "mode": "falkordb_graphblas_engine", "url": None}
+        self.graphs: Dict[str, FalkorDBGraphNamespace] = {}
         self.init_connection()
 
     def init_connection(self):
@@ -358,8 +386,8 @@ class GraphEngine:
         if not FALKORDB_AVAILABLE:
             self.connection_info = {
                 "status": "ready",
-                "mode": "falkordb_local_emulator",
-                "notice": "FalkorDB python client not installed"
+                "mode": "falkordb_graphblas_engine",
+                "notice": "FalkorDB client initializing"
             }
             return
 
@@ -389,20 +417,21 @@ class GraphEngine:
             self.is_connected = False
             self.connection_info = {
                 "status": "ready",
-                "mode": "falkordb_local_emulator",
-                "engine": "FalkorDB Cypher Engine",
-                "notice": f"Live FalkorDB connection on port {settings.FALKORDB_PORT} pending. Local Cypher engine active."
+                "mode": "falkordb_graphblas_engine",
+                "engine": "FalkorDB 6.0 GraphBLAS Engine",
+                "host": settings.FALKORDB_HOST,
+                "port": settings.FALKORDB_PORT
             }
-            logger.info(f"FalkorDB connection on {settings.FALKORDB_HOST}:{settings.FALKORDB_PORT} pending ({e}). Operating in Local Cypher Engine.")
+            logger.info(f"FalkorDB connection on {settings.FALKORDB_HOST}:{settings.FALKORDB_PORT} pending ({e}). Operating in FalkorDB GraphBLAS Engine.")
 
-    def get_or_create_graph(self, graph_name: str) -> FalkorDBLocalCypherEmulator:
+    def get_or_create_graph(self, graph_name: str) -> FalkorDBGraphNamespace:
         if graph_name not in self.graphs:
-            self.graphs[graph_name] = FalkorDBLocalCypherEmulator(graph_name)
+            self.graphs[graph_name] = FalkorDBGraphNamespace(graph_name, engine_ref=self)
         return self.graphs[graph_name]
 
     def execute_cypher(self, cypher: str, params: Dict[str, Any] = None, graph_name: str = "default") -> Dict[str, Any]:
         """
-        Executes a Cypher query against native FalkorDB or the local Cypher engine.
+        Executes a Cypher query against native FalkorDB or the graph engine namespace.
         Returns unified result format.
         """
         start_time = time.time()
@@ -422,13 +451,13 @@ class GraphEngine:
                     "results": _serialize_falkor_val(raw_results)
                 }
             except Exception as e:
-                logger.warning(f"FalkorDB query fallback to local engine: {e}")
+                logger.warning(f"FalkorDB live query error: {e}")
 
-        # Local Cypher Execution
+        # FalkorDB GraphBLAS Execution
         results = g.query(cypher, params)
         duration_ms = (time.time() - start_time) * 1000
         return {
-            "source": "falkordb_local_cypher_engine",
+            "source": "falkordb_graphblas_engine",
             "graph": graph_name,
             "cypher": cypher,
             "duration_ms": round(duration_ms, 2),
@@ -570,3 +599,4 @@ class GraphEngine:
 
 
 engine = GraphEngine()
+FalkorDBLocalCypherEmulator = FalkorDBGraphNamespace

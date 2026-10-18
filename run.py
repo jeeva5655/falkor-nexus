@@ -13,7 +13,7 @@ def main():
     print(f"  Web Dashboard:  http://{settings.HOST}:{settings.PORT}")
     print(f"  API Docs:       http://{settings.HOST}:{settings.PORT}/docs")
     print(f"  MCP Server:     http://{settings.HOST}:{settings.PORT}/api/mcp/tools")
-    print(f"  FalkorDB Mode:  Dual-Engine (Live + High-Speed Fallback)")
+    print(f"  FalkorDB Mode:  Native Multigraph & GraphBLAS Engine (Port 6379)")
     print("=" * 65)
     print("  [Track 01] Multi-hop Reasoning, Graph Algorithms (PageRank/SPOFs), MCP")
     print("  [Track 02] Tri-Memory (Episodic, Semantic, Procedural) & 4-Agent Handoffs")

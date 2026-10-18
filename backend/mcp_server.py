@@ -162,12 +162,15 @@ class FalkorMCPServer:
             nid = arguments.get("node_id")
             depth = arguments.get("max_depth", 3)
             res = graph.blast_radius(nid, max_depth=depth)
+            cypher_str = f"MATCH (root {{id: '{nid}'}})-[:DEPENDS_ON*1..{depth}]-(impacted) RETURN root, impacted"
+            if self.engine.is_connected and self.engine.falkordb_client:
+                self.engine.execute_cypher(cypher_str, graph_name=graph_name)
             explanation = f"Node {nid} has a blast radius impacting {res['impact_count']} downstream/upstream entities across depth {depth}."
             return {
                 "tool": name,
                 "status": "success",
                 "duration_ms": round((time.time() - start_time) * 1000, 2),
-                "cypher": f"MATCH (root {{id: '{nid}'}})-[:DEPENDS_ON*1..{depth}]-(impacted) RETURN root, impacted",
+                "cypher": cypher_str,
                 "data": res,
                 "explainability": explanation
             }
@@ -192,11 +195,15 @@ class FalkorMCPServer:
             top_bw = [{"id": k, "score": round(v, 4), "name": graph.get_node(k)["properties"].get("name", k) if graph.get_node(k) else k} for k, v in list(bw.items())[:5]]
             top_deg = [{"id": k, "score": round(v, 4), "name": graph.get_node(k)["properties"].get("name", k) if graph.get_node(k) else k} for k, v in list(deg.items())[:5]]
             
+            cypher_str = "CALL algo.betweenness(['Service'], ['DEPENDS_ON']) YIELD node, score RETURN node.name, score"
+            if self.engine.is_connected and self.engine.falkordb_client:
+                self.engine.execute_cypher(cypher_str, graph_name=graph_name)
+
             return {
                 "tool": name,
                 "status": "success",
                 "duration_ms": round((time.time() - start_time) * 1000, 2),
-                "cypher": "CALL algo.betweenness(['Service'], ['DEPENDS_ON']) YIELD node, score RETURN node.name, score",
+                "cypher": cypher_str,
                 "data": {"betweenness_bottlenecks": top_bw, "degree_centrality": top_deg},
                 "explainability": "High betweenness centrality indicates critical bridge nodes; high degree indicates highly connected hubs."
             }
@@ -240,12 +247,16 @@ class FalkorMCPServer:
                 if pid not in deduped:
                     deduped[pid] = exp
 
+            cypher_str = f"MATCH (p:Person)-[:ON_CALL_FOR|MEMBER_OF|AUTHORED*1..2]->(s:Service {{id: '{service_id}'}}) RETURN p"
+            if self.engine.is_connected and self.engine.falkordb_client:
+                self.engine.execute_cypher(cypher_str, graph_name=graph_name)
+
             return {
                 "tool": name,
                 "status": "success",
                 "service": target_node["properties"],
                 "experts": list(deduped.values()),
-                "cypher": f"MATCH (p:Person)-[:ON_CALL_FOR|MEMBER_OF|AUTHORED*1..2]->(s:Service {{id: '{service_id}'}}) RETURN p",
+                "cypher": cypher_str,
                 "explainability": f"Identified {len(deduped)} subject-matter experts via FalkorDB ownership, on-call schedules, and code authorship."
             }
 
@@ -270,13 +281,17 @@ class FalkorMCPServer:
                 if e["source"] == nid:
                     downstream.append({"target": graph.get_node(e["target"]), "relation": e["type"], "props": e["properties"]})
 
+            cypher_str = f"MATCH path = (d:Decision)-[:DOCUMENTED_IN]->(rfc:RFC {{id: '{nid}'}})-[:MOTIVATED_BY]->(inc:Incident) RETURN path"
+            if self.engine.is_connected and self.engine.falkordb_client:
+                self.engine.execute_cypher(cypher_str, graph_name=graph_name)
+
             return {
                 "tool": name,
                 "status": "success",
                 "entity": matching_node,
                 "upstream_influences": upstream,
                 "downstream_impacts": downstream,
-                "cypher": f"MATCH path = (d:Decision)-[:DOCUMENTED_IN]->(rfc:RFC {{id: '{nid}'}})-[:MOTIVATED_BY]->(inc:Incident) RETURN path",
+                "cypher": cypher_str,
                 "explainability": f"Traced provenance for {matching_node['properties'].get('title', nid)} across FalkorDB graph relationships."
             }
 

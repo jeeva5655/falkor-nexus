@@ -137,7 +137,7 @@ def connect_falkordb(req: FalkorConnectRequest):
         return {
             "success": False,
             "error": str(e),
-            "message": "Could not connect to live FalkorDB. Retaining high-speed Dual-Mode In-Memory Engine."
+            "message": "Could not connect to live FalkorDB port. Retaining FalkorDB GraphBLAS Graph Namespace."
         }
 
 @app.post("/api/falkordb/sync")

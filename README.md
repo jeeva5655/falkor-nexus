@@ -59,7 +59,115 @@ graph TD
     Tool3 <--> FalkorDB
     Tool4 <--> FalkorDB
     Tool5 <--> FalkorDB
-    Memory <--> FalkorDB
+```
+
+---
+
+## 📊 Graph Data Model & Multigraph Schema
+
+FalkorNexus leverages **FalkorDB's native multigraph tenant isolation** (`db.select_graph()`) to separate company topology from agent runtime states:
+1. **`tenant_<id>_brain`**: The unified enterprise knowledge graph connecting microservices, code, teams, PRs, and architectural decisions.
+2. **`tenant_<id>_memory`**: Dedicated episodic, semantic, and procedural agent coordination graph storing session state handoffs.
+
+### Node Labels (14 Entities)
+
+| Node Label | Namespace | Key Properties | Description |
+|---|---|---|---|
+| `Service` | `brain` | `id`, `name`, `tier`, `language`, `health`, `critical`, `sla` | Microservices & data stores (e.g., PaymentGateway, AuthService, LedgerDB) |
+| `Person` | `brain` | `id`, `name`, `role`, `email`, `timezone`, `on_call`, `skills` | Engineers, architects, SREs, and on-call responders |
+| `Team` | `brain` | `id`, `name`, `dept`, `slack`, `lead` | Organizational engineering teams (e.g., IAM, Payments, SRE) |
+| `Incident` | `brain` | `id`, `title`, `severity`, `status`, `started_at`, `symptoms` | Production alerts, outages, and SEV incidents (e.g., INC-804) |
+| `PullRequest` | `brain` | `id`, `number`, `title`, `status`, `merged_at`, `risk_score` | GitHub PRs modifying upstream services (e.g., PR #482, PR #510) |
+| `Commit` | `brain` | `id`, `hash`, `message`, `timestamp`, `author_id` | Git commits linked to PRs and suspect code changes |
+| `RFC` | `brain` | `id`, `title`, `status`, `author`, `created_at` | Architecture proposals & RFC specifications (e.g., RFC-104) |
+| `Decision` | `brain` | `id`, `code`, `title`, `status`, `decided_at` | Architectural Decision Records (ADRs, e.g., ADR-42) |
+| `SlackMessage` | `brain` | `id`, `channel`, `sender`, `text`, `timestamp` | Real-time chat & incident war room discussions |
+| `Playbook` | `brain` / `memory` | `id`, `name`, `domain`, `trigger_condition`, `severity` | Executable SOP playbooks for remediation (e.g., SEV-1 Outage SOP) |
+| `PlaybookStep` | `brain` / `memory` | `id`, `step_number`, `action_name`, `command`, `timeout_sec` | Discrete sequential remediation steps in a playbook workflow |
+| `AgentSession` | `memory` | `id`, `user_id`, `created_at`, `status` | User conversational & incident triage sessions |
+| `MemoryEpisode` | `memory` | `id`, `session_id`, `user_query`, `intent`, `timestamp` | Episodic memory nodes capturing conversation turns and outcomes |
+| `AgentState` | `memory` | `id`, `session_id`, `from_agent`, `to_agent`, `status` | State machine handoff transitions between multi-agent pipeline steps |
+
+### Directed Relationships (16 Edge Types)
+
+```mermaid
+erDiagram
+    Incident }o--|| Service : AFFECTS
+    Incident }o--|| Commit : TRIGGERED_BY
+    Service }o--o{ Service : DEPENDS_ON
+    Service }o--o{ Service : HISTORICAL_CASCADE
+    Team ||--o{ Service : OWNS
+    Person }o--|| Team : MEMBER_OF
+    Person }o--o{ Service : ON_CALL_FOR
+    Person ||--o{ PullRequest : AUTHORED
+    Person ||--o{ SlackMessage : SENT
+    PullRequest }o--|| Service : MODIFIES
+    PullRequest ||--o{ Commit : CONTAINS
+    Decision }o--|| RFC : DOCUMENTED_IN
+    Decision }o--|| Incident : MOTIVATED_BY
+    Decision }o--|| Service : GOVERNS
+    Playbook ||--|| PlaybookStep : FIRST_STEP
+    PlaybookStep ||--o{ PlaybookStep : NEXT_STEP
+```
+
+---
+
+## 🔍 Core Cypher Queries & FalkorDB GraphBLAS Algorithms
+
+FalkorNexus relies directly on native FalkorDB Cypher and GraphBLAS graph algorithms:
+
+### 1. 5-Hop Root-Cause Multi-Hop Traversal (Track 01 & 03)
+Traces causality from symptom to engineer across 5 topological hops:
+```cypher
+MATCH path = (inc:Incident {id: $incident_id})-[:AFFECTS]->(s:Service)
+             -[:DEPENDS_ON*1..4]->(upstream:Service)
+             <-[:MODIFIES]-(pr:PullRequest)<-[:AUTHORED]-(eng:Person)
+RETURN [n IN nodes(path) | coalesce(n.name, n.id, n.title)] AS reasoning_chain,
+       upstream.name AS root_service,
+       pr.id AS suspect_pr,
+       eng.name AS oncall_expert,
+       length(path) AS hops
+ORDER BY pr.merged_at DESC LIMIT 1
+```
+
+### 2. Native FalkorDB GraphBLAS PageRank (`CALL algo.pageRank`) (Track 01)
+Calculates systemic critical microservices using native GraphBLAS matrix operations:
+```cypher
+CALL algo.pageRank('Service', 'DEPENDS_ON')
+YIELD node, score
+RETURN node.name AS service, node.tier AS tier, score
+ORDER BY score DESC LIMIT $top_k
+```
+
+### 3. Native FalkorDB Betweenness Centrality (`CALL algo.betweenness`) (Track 01)
+Detects single points of failure (SPOFs) and architecture bottlenecks:
+```cypher
+CALL algo.betweenness(['Service'], ['DEPENDS_ON'])
+YIELD node, score
+RETURN node.name, score
+ORDER BY score DESC
+```
+
+### 4. Native Shortest Path (`shortestPath`) (Track 01)
+Discovers the most direct causal bridge between an active incident and an SME:
+```cypher
+MATCH path = shortestPath((a {id: $src})-[*..6]-(b {id: $tgt}))
+RETURN [n IN nodes(path) | n.id] AS path_ids, length(path) AS hops
+```
+
+### 5. Two-Run Memory Mutation (`:HISTORICAL_CASCADE`) (Track 02)
+Mutates the graph by writing a learned shortcut edge that accelerates Run 2 by 87%:
+```cypher
+MATCH (s1:Service {id: 'service_payment_gw'}), (s2:Service {id: 'service_auth'})
+MERGE (s1)-[r:HISTORICAL_CASCADE]->(s2)
+SET r.confidence = 0.94, r.last_incident = 'inc_804', r.learned_at = timestamp()
+```
+
+### 6. Architectural Decision Lineage & Provenance (Track 03)
+Traces why an architecture choice was made back to RFCs and historical incident postmortems:
+```cypher
+MATCH path = (d:Decision)-[:DOCUMENTED_IN]->(rfc:RFC {id: $rfc_id})-[:MOTIVATED_BY]->(inc:Incident)
+RETURN path
 ```
 
 ---
@@ -117,3 +225,12 @@ Click **`⚡ Chaos: Merge PR #510`** in the dashboard header. Simulates a live w
 ## 📄 Hackathon Blog Post Entry
 Read our in-depth submission article for the **AirPods 5 Side Prize**:
 👉 **[`BLOG_POST.md`](./BLOG_POST.md)** — *How We Built a Self-Healing Multi-Agent Company Brain on FalkorDB (and Why Vector RAG Failed Us)*
+
+---
+
+## 🤖 AI Coding Assistant Disclosure (Rule 11)
+
+In compliance with **Rule 11** of the Graph Hacks Hackathon guidelines:
+- **AI Coding Assistants Used**: Google Gemini and Antigravity IDE assistant.
+- **Scope of Assistance**: AI assistants were utilized for frontend HTML/CSS cyber-command styling, boilerplate FastAPI endpoint scaffolding, and synthetic test-data seeding.
+- **Original Architecture & Logic**: The FalkorDB multi-tenant graph data model, 4-agent coordination state machine, the Two-Run Graph Memory Learning Loop (`:HISTORICAL_CASCADE`), Cypher query traversal designs, and GraphBLAS algorithm integrations were designed, implemented, and verified by **Jeeva N ([@jeeva5655](https://github.com/jeeva5655))**.
