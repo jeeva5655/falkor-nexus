@@ -466,6 +466,12 @@ def reset_learning(tenant_id: str = settings.DEFAULT_TENANT):
     initial_edge_count = len(g.edges)
     g.edges = [e for e in g.edges if e.get("type") != "HISTORICAL_CASCADE"]
     removed_count = initial_edge_count - len(g.edges)
+    if engine.is_connected and engine.falkordb_client:
+        try:
+            f_graph = engine.falkordb_client.select_graph(g_name)
+            f_graph.query("MATCH ()-[r:HISTORICAL_CASCADE]->() DELETE r")
+        except Exception:
+            pass
     return {
         "success": True,
         "message": f"Reset {removed_count} learned shortcut edge(s). Ready for Run 1 (Cold Start).",

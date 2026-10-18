@@ -33,10 +33,14 @@ class TriageAgent:
             intent = "DECISION_PROVENANCE"
             target_entity = "rfc_104" if "104" in q_lower or "falkor" in q_lower or "session" in q_lower else "rfc_112"
             thought_log.append(f"Classified as DECISION_PROVENANCE. Tracing decision source for: {target_entity}")
-        elif any(w in q_lower for w in ["who owns", "who knows", "who touched", "who modified", "recent", "expert", "on-call", "team", "engineer"]):
+        elif any(w in q_lower for w in [
+            "who owns", "who knows", "who touched", "who modified", "who changed",
+            "recent", "expert", "on-call", "team", "engineer", "touched", "modified",
+            "author", "ownership", "committer", "commit"
+        ]):
             intent = "EXPERTISE_DISCOVERY"
             target_entity = (
-                "service_ledger" if ("ledger" in q_lower or "billing" in q_lower)
+                "service_ledger" if any(w in q_lower for w in ["ledger", "billing", "rate limit", "510"])
                 else ("service_payment_gw" if "payment" in q_lower else "service_auth")
             )
             thought_log.append(f"Classified as EXPERTISE_DISCOVERY for entity: {target_entity}")

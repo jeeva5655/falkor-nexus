@@ -70,6 +70,16 @@ class MemoryAgent:
                         "shortcut_target": "service_auth"
                     }
                 )
+                if self.mcp.engine.is_connected and self.mcp.engine.falkordb_client:
+                    try:
+                        f_graph = self.mcp.engine.falkordb_client.select_graph(f"tenant_{tenant_id}_brain")
+                        f_graph.query("""
+                            MATCH (s1:Service {id: 'service_payment_gw'}), (s2:Service {id: 'service_auth'})
+                            MERGE (s1)-[r:HISTORICAL_CASCADE]->(s2)
+                            SET r.confidence = 0.94, r.last_incident = 'inc_804', r.shortcut_target = 'service_auth'
+                        """)
+                    except Exception as e:
+                        pass
                 thought_log.append(
                     "💡 MUTATING GRAPH: Created semantic shortcut edge "
                     "(:Service {id: 'service_payment_gw'})-[:HISTORICAL_CASCADE]->(:Service {id: 'service_auth'})! "
