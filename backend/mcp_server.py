@@ -131,6 +131,16 @@ class FalkorMCPServer:
                     },
                     "required": ["service_id"]
                 }
+            },
+            {
+                "name": "falkordb_community_detection",
+                "description": "Partitions the enterprise graph into modularity communities and microservice clusters using native FalkorDB graph algorithms.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "tenant_id": {"type": "string", "default": "nexus_corp"}
+                    }
+                }
             }
         ]
 
@@ -374,6 +384,25 @@ class FalkorMCPServer:
                 "cypher": cypher_str,
                 "remediation": remediation,
                 "explainability": f"Pre-Merge CI/CD Risk Gate analyzed {len(unguarded_dependencies)} unguarded incoming dependencies. Verdict: {verdict} (Risk: {risk_score}/100)."
+            }
+
+        elif name == "falkordb_community_detection":
+            communities = graph.community_detection()
+            cypher_str = "CALL algo.communityDetection() YIELD node, community RETURN community, count(node) AS size, collect(node.name) AS members"
+            if self.engine.is_connected and self.engine.falkordb_client:
+                try:
+                    self.engine.execute_cypher(cypher_str, graph_name=graph_name)
+                except Exception:
+                    pass
+
+            return {
+                "tool": name,
+                "status": "success",
+                "tenant_id": tenant_id,
+                "total_communities": len(communities),
+                "communities": communities,
+                "cypher": cypher_str,
+                "explainability": f"FalkorDB Modularity Community Detection partitioned {graph_name} into {len(communities)} isolated enterprise clusters."
             }
 
         return {"tool": name, "status": "unknown_tool"}

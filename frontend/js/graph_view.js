@@ -172,10 +172,28 @@ class GraphVisualizer {
     this.blastRadiusNodes = new Set(impactedIds);
   }
 
+  highlightCommunities(communities) {
+    const palette = ['#00f2fe', '#a855f7', '#10b981', '#f59e0b', '#ec4899', '#38bdf8', '#ff4b72', '#6366f1'];
+    (communities || []).forEach((comm, idx) => {
+      const color = palette[idx % palette.length];
+      (comm.members || []).forEach(mId => {
+        const node = this.nodeMap.get(mId);
+        if (node) {
+          node.communityColor = color;
+          node.color = color;
+        }
+      });
+    });
+  }
+
   clearHighlights() {
     this.highlightedPath.clear();
     this.blastRadiusRoot = null;
     this.blastRadiusNodes.clear();
+    this.nodes.forEach(n => {
+      n.communityColor = null;
+      n.color = this.labelColors[n.label] || this.labelColors.Default;
+    });
   }
 
   applyForces() {
@@ -296,6 +314,17 @@ class GraphVisualizer {
         this.ctx.strokeStyle = `rgba(255, 75, 114, ${1 - pulse})`;
         this.ctx.lineWidth = 2;
         this.ctx.stroke();
+      }
+
+      // Community Cluster Halo
+      if (node.communityColor) {
+        this.ctx.beginPath();
+        this.ctx.arc(node.x, node.y, node.radius + 6, 0, Math.PI * 2);
+        this.ctx.strokeStyle = node.communityColor;
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([3, 3]);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
       }
 
       // Draw node circle

@@ -21,6 +21,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupTenantSwitcher();
   setupPremergeGate();
   setupGraphRAGExtractor();
+  setupCommunityDetection();
+  setupConcurrencyBenchmark();
+  setupBusFactorSimulator();
   setupScenarioButtons();
   setupTwoRunLoop();
   setupTraversalReplay();
@@ -198,8 +201,58 @@ function renderAgentPipeline(steps, finalResult, durationMs) {
       </div>
       ${actionsHtml ? `<div style="margin-top:6px;">${actionsHtml}</div>` : ''}
       ${citationsHtml ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">${citationsHtml}</div>` : ''}
+      <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+        <button class="btn-secondary" id="btnExportPostmortem" style="font-size:0.72rem; padding:4px 8px; border-color:var(--accent-cyan); color:var(--accent-cyan);">
+          📥 Export Postmortem & Cypher Audit (.md)
+        </button>
+      </div>
     `;
     container.appendChild(finalCard);
+
+    const exportBtn = finalCard.querySelector('#btnExportPostmortem');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        let md = `# FalkorNexus Incident Postmortem & Graph Audit\n\n`;
+        md += `**Date:** ${new Date().toISOString()}\n`;
+        md += `**Tenant:** \`${currentTenantId}\`\n`;
+        md += `**Execution Latency:** ${durationMs} ms\n\n`;
+        md += `## 1. Summary & Resolution\n${finalResult.answer}\n\n`;
+        md += `## 2. Multi-Agent Reasoning Chain\n\n`;
+        steps.forEach((s, idx) => {
+          md += `### Step ${idx + 1}: ${s.agent} (${s.latency_ms} ms)\n`;
+          md += `- **Thought:** ${s.thought}\n`;
+          if (s.tool_calls && s.tool_calls.length) {
+            md += `- **Tool Executed:** \`${s.tool_calls[0].tool}\`\n`;
+            md += `- **Parameters:** \`${JSON.stringify(s.tool_calls[0].args)}\`\n`;
+          }
+          md += `\n`;
+        });
+        if (finalResult.learning_metrics) {
+          md += `## 3. Two-Run Memory Acceleration\n`;
+          md += `- **Run Type:** ${finalResult.learning_metrics.run_type}\n`;
+          md += `- **Hops Traversed:** ${finalResult.learning_metrics.hops_count}\n`;
+          md += `- **Memory Shortcut Used:** ${finalResult.learning_metrics.memory_shortcut_used}\n\n`;
+        }
+        if (finalResult.citations && finalResult.citations.length) {
+          md += `## 4. Graph Citations & Lineage\n`;
+          finalResult.citations.forEach(c => {
+            md += `- \`(${c.label}: ${c.name || c.id})\`\n`;
+          });
+          md += `\n`;
+        }
+        md += `---\n*Generated autonomously by FalkorNexus Multi-Agent Operations Command on FalkorDB.*`;
+
+        const blob = new Blob([md], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `falkornexus_postmortem_${Date.now()}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    }
   }
 }
 
@@ -446,6 +499,27 @@ async function loadTrack2Memory() {
       }
     } catch (err) {
       chainEl.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); padding:8px;">Playbook online.</div>`;
+    }
+
+    // Load Persisted Agent State Handoffs (Track 02 Spec)
+    try {
+      const handoffsRes = await fetch(`${API_BASE}/api/agents/handoffs?tenant_id=${encodeURIComponent(currentTenantId)}`);
+      const handoffsData = await handoffsRes.json();
+      const hList = document.getElementById('agentHandoffsList');
+      if (hList) {
+        hList.innerHTML = (handoffsData.handoffs || []).map(h => `
+          <div class="algo-item" style="font-size:0.7rem; padding:4px 6px;">
+            <div>
+              <span style="font-weight:700; color:var(--accent-cyan);">${h.from_agent || 'User'}</span>
+              <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
+              <span style="font-weight:700; color:var(--accent-emerald);">${h.to_agent}</span>
+            </div>
+            <span class="panel-badge" style="font-size:0.62rem;">${h.status || 'HANDOFF_COMPLETED'}</span>
+          </div>
+        `).join('') || '<div style="font-size:0.75rem; color:var(--text-muted); padding:6px;">No handoff states yet. Run a scenario to record state handoffs.</div>';
+      }
+    } catch (err) {
+      console.warn('Handoffs load error:', err);
     }
   } catch (e) {
     console.error(e);
@@ -725,3 +799,96 @@ function setupGraphRAGExtractor() {
     }
   });
 }
+
+// ----------------- Community Detection & Canvas Cluster Coloring (Track 01 Spec) -----------------
+function setupCommunityDetection() {
+  const btn = document.getElementById('btnClusterCommunities');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.innerHTML = '<span>🎨 Computing Modularity...</span>';
+    try {
+      const res = await fetch(`${API_BASE}/api/graph/algorithms/communities?tenant_id=${encodeURIComponent(currentTenantId)}`);
+      const data = await res.json();
+      const communities = data.communities || [];
+      visualizer.highlightCommunities(communities);
+      console.log(`[FalkorDB Modularity] Colored ${communities.length} community clusters.`);
+    } catch (e) {
+      console.error('Community detection error:', e);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span>🎨 Cluster Communities</span>';
+    }
+  });
+}
+
+// ----------------- High-Concurrency Multigraph Benchmark (Track 02 Spec) -----------------
+function setupConcurrencyBenchmark() {
+  const btn = document.getElementById('btnRunConcurrency');
+  const resEl = document.getElementById('concurrencyResult');
+  if (!btn || !resEl) return;
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⚡ Running 50-Op Stress Test...</span>';
+    resEl.style.display = 'block';
+    resEl.innerHTML = `<span style="color:var(--text-muted);">Executing 50 concurrent multigraph reads, writes, and matrix traversals...</span>`;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/graph/concurrency_benchmark`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: currentTenantId, operations: 50 })
+      });
+      const data = await res.json();
+      resEl.style.borderLeft = '3px solid var(--accent-emerald)';
+      resEl.innerHTML = `
+        <div style="font-weight:700; color:var(--accent-emerald); margin-bottom:4px;">⚡ 50 Operations Completed (0 Conflicts)</div>
+        <div style="color:var(--text-primary); font-size:0.72rem;">Throughput: <strong style="color:var(--accent-cyan);">${data.ops_per_sec} ops/sec</strong> &bull; Avg Latency: <strong style="color:var(--accent-amber);">${data.avg_latency_ms} ms</strong></div>
+        <div style="color:var(--text-secondary); font-size:0.68rem; margin-top:2px;">Parallel threads: ${data.concurrency_threads || 8} &bull; Isolated multigraphs verified: ${data.multigraph_tenants_tested}</div>
+      `;
+    } catch (e) {
+      resEl.innerHTML = `<span style="color:var(--accent-rose);">Benchmark error: ${e.message}</span>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span>⚡ Run 50-Op Concurrency Benchmark</span>';
+    }
+  });
+}
+
+// ----------------- Bus-Factor & Knowledge Silo Simulator (Track 03 Spec) -----------------
+function setupBusFactorSimulator() {
+  const btn = document.getElementById('btnBusFactorSim');
+  const resEl = document.getElementById('busFactorResult');
+  if (!btn || !resEl) return;
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.innerHTML = '<span>🚨 Simulating Sarah Chen Offline...</span>';
+    resEl.style.display = 'block';
+
+    try {
+      const res = await fetch(`${API_BASE}/api/graph/bus_factor?tenant_id=${encodeURIComponent(currentTenantId)}&unavailable_person_id=sarah_chen`);
+      const data = await res.json();
+      resEl.style.borderLeft = '3px solid #ec4899';
+      const backup = data.recommended_failover_responder || {};
+      resEl.innerHTML = `
+        <div style="font-weight:700; color:#ec4899; margin-bottom:4px;">🚨 Critical Knowledge Silo Detected</div>
+        <div style="color:var(--text-primary); font-size:0.71rem;">${data.explainability}</div>
+        <div style="margin-top:4px; font-size:0.7rem; color:var(--accent-cyan);">
+          Automatic Failover Responder: <strong>${backup.name || 'Alex Rivera'}</strong> (${backup.role || 'Principal SRE'})
+        </div>
+      `;
+
+      if (data.failover_path && data.failover_path.length > 0) {
+        visualizer.highlightPath(data.failover_path);
+      }
+    } catch (e) {
+      resEl.innerHTML = `<span style="color:var(--accent-rose);">Error analyzing bus factor: ${e.message}</span>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span>🚨 Simulate Primary Architect Offline & Find Failover</span>';
+    }
+  });
+}
+

@@ -184,6 +184,10 @@
         <button class="tool-btn" id="btnReplayTraversal" style="color:var(--accent-cyan); border-left:1px solid var(--border-subtle); padding-left:12px;">
           <span>▶ Replay Traversal</span>
         </button>
+
+        <button class="tool-btn" id="btnClusterCommunities" style="color:#c084fc; border-left:1px solid var(--border-subtle); padding-left:12px;" title="Run modularity community detection & color graph clusters">
+          <span>🎨 Cluster Communities</span>
+        </button>
       </div>
 
       <div class="graph-canvas-container">
@@ -271,7 +275,7 @@
           <div class="algo-card">
             <div class="algo-header">
               <span class="algo-title">Model Context Protocol (MCP) Tools</span>
-              <span class="panel-badge">9 Tools</span>
+              <span class="panel-badge">10 Tools</span>
             </div>
             <div style="font-size:0.74rem; color:var(--text-secondary); line-height:1.4;">
               • <code>falkordb_cypher_query</code><br>
@@ -282,7 +286,8 @@
               • <code>falkordb_find_expert</code><br>
               • <code>falkordb_decision_lineage</code><br>
               • <code>falkordb_execute_action</code><br>
-              • <code>falkordb_premerge_risk_gate</code> [Track 01 CI/CD Gate]
+              • <code>falkordb_premerge_risk_gate</code><br>
+              • <code>falkordb_community_detection</code> [CALL algo.communityDetection]
             </div>
           </div>
         </div>
@@ -324,6 +329,32 @@
             </div>
           </div>
 
+          <!-- Persisted Agent State Handoffs (Track 02 Spec) -->
+          <div class="algo-card">
+            <div class="algo-header">
+              <span class="algo-title">Agent State Handoff Timeline</span>
+              <span class="panel-badge">tenant_memory</span>
+            </div>
+            <div class="algo-list" id="agentHandoffsList" style="max-height:120px; overflow-y:auto;">
+              <div style="font-size:0.75rem; color:var(--text-muted);">Loading persisted agent states...</div>
+            </div>
+          </div>
+
+          <!-- High-Concurrency Multigraph Benchmark (Track 02 Spec) -->
+          <div class="algo-card" style="border-color:rgba(16, 185, 129, 0.4); background:rgba(16, 185, 129, 0.04);">
+            <div class="algo-header">
+              <span class="algo-title" style="color:var(--accent-emerald);">⚡ High-Concurrency Multigraph Benchmark</span>
+              <span class="panel-badge" style="background:rgba(16, 185, 129, 0.2); color:var(--accent-emerald);">Track 02 Spec</span>
+            </div>
+            <div style="font-size:0.73rem; color:var(--text-secondary); line-height:1.35; margin-bottom:6px;">
+              Executes 50 concurrent read/write/traversal operations across isolated tenant graphs to prove sub-millisecond throughput.
+            </div>
+            <button class="btn-primary" id="btnRunConcurrency" style="width:100%; justify-content:center; font-size:0.74rem;">
+              <span>⚡ Run 50-Op Concurrency Benchmark</span>
+            </button>
+            <div id="concurrencyResult" style="margin-top:6px; font-size:0.72rem; display:none; padding:6px; background:rgba(0,0,0,0.3); border-radius:4px; line-height:1.35;"></div>
+          </div>
+
           <button class="btn-secondary" id="btnLearnPlaybook" style="justify-content:center;">
             <span>➕ Dynamically Learn New Playbook SOP</span>
           </button>
@@ -339,6 +370,21 @@
             <div class="algo-list" id="expertsList">
               <div style="font-size:0.75rem; color:var(--text-muted);">Loading Experts...</div>
             </div>
+          </div>
+
+          <!-- Bus-Factor & Knowledge Silo Failover Simulator (Track 03 Spec) -->
+          <div class="algo-card" style="border-color:rgba(236, 72, 153, 0.4); background:rgba(236, 72, 153, 0.04);">
+            <div class="algo-header">
+              <span class="algo-title" style="color:#f472b6;">🚨 Bus-Factor & Knowledge Silo Simulator</span>
+              <span class="panel-badge" style="background:rgba(236, 72, 153, 0.2); color:#f472b6;">Track 03 Spec</span>
+            </div>
+            <div style="font-size:0.73rem; color:var(--text-secondary); line-height:1.35; margin-bottom:6px;">
+              Detect services with dangerous <strong>Bus Factor = 1</strong> and simulate automated failover routing when primary architect (Sarah Chen) is unreachable.
+            </div>
+            <button class="btn-primary" id="btnBusFactorSim" style="width:100%; justify-content:center; font-size:0.74rem; background:linear-gradient(135deg, #ec4899, #8a2be2);">
+              <span>🚨 Simulate Primary Architect Offline & Find Failover</span>
+            </button>
+            <div id="busFactorResult" style="margin-top:6px; font-size:0.72rem; display:none; padding:6px; background:rgba(0,0,0,0.3); border-radius:4px; line-height:1.35;"></div>
           </div>
 
           <div class="algo-card" style="border-color:rgba(0, 242, 254, 0.4); background:rgba(0, 242, 254, 0.04);">

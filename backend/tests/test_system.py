@@ -141,8 +141,34 @@ def test_full_system_across_all_tracks():
     assert "pr_612" in test_corp_g.nodes
     print(f"[PASS] GraphRAG Extractor verified: {rag_extract_data['entities_extracted_count']} nodes & {rag_extract_data['relationships_extracted_count']} edges extracted to FalkorDB.")
 
+    print("\n--- GRAND FINALE ADDITIONS: COMMUNITY DETECTION, CONCURRENCY & BUS-FACTOR ---")
+    # 4. Community Detection MCP Tool #10 (Track 01 Spec)
+    comm_res = mcp.call_tool("falkordb_community_detection", {"tenant_id": "test_corp"})
+    assert comm_res["status"] == "success"
+    assert comm_res["total_communities"] > 0
+    print(f"[PASS] Community Detection verified: Partitioned graph into {comm_res['total_communities']} modularity clusters.")
+
+    # 5. Concurrency Stress Test Benchmark (Track 02 Spec)
+    bench_resp = client.post("/api/graph/concurrency_benchmark", json={"tenant_id": "test_corp", "operations": 20})
+    assert bench_resp.status_code == 200
+    bench_data = bench_resp.json()
+    assert bench_data["successful_operations"] == 20
+    assert bench_data["ops_per_sec"] > 0
+    assert bench_data["write_conflicts"] == 0
+    print(f"[PASS] Concurrency Benchmark verified: {bench_data['ops_per_sec']} ops/sec, avg latency {bench_data['avg_latency_ms']}ms across isolated multigraphs.")
+
+    # 6. Bus-Factor & Knowledge Silo Simulator (Track 03 Spec)
+    bus_resp = client.get("/api/graph/bus_factor?tenant_id=test_corp&unavailable_person_id=sarah_chen")
+    assert bus_resp.status_code == 200
+    bus_data = bus_resp.json()
+    assert bus_data["status"] == "success"
+    assert len(bus_data["services"]) > 0
+    assert bus_data["recommended_failover_responder"] is not None
+    assert len(bus_data["failover_path"]) > 0
+    print(f"[PASS] Bus-Factor Simulator verified: Sarah Chen offline -> Rerouted to {bus_data['recommended_failover_responder']['name']} ({bus_data['recommended_failover_responder']['role']}) via {bus_data['failover_path']}.")
+
     print("\n========================================================")
-    print("ALL 3 TRACKS + CLINCHERS 100% VERIFIED & PASSING!")
+    print("ALL 3 TRACKS + CLINCHERS + GRAND FINALE 100% VERIFIED!")
     print("========================================================")
 
 if __name__ == "__main__":

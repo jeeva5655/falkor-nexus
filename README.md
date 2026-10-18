@@ -223,10 +223,10 @@ Click **`⚡ Chaos: Merge PR #510`** in the dashboard header. Simulates a live w
 
 ---
 
-## ⚡ Model Context Protocol (MCP) Server (9 Tools)
+## ⚡ Model Context Protocol (MCP) Server (10 Tools)
 
 - **Endpoints**: `POST /api/mcp/call`, `GET /api/mcp/tools`
-- Exposes 9 native FalkorDB GraphBLAS procedures via standard MCP JSON-RPC protocol:
+- Exposes 10 native FalkorDB GraphBLAS procedures via standard MCP JSON-RPC protocol:
   1. `falkordb_cypher_query`: Execute arbitrary Cypher queries.
   2. `falkordb_shortest_path`: Native `shortestPath()` multi-hop causal exploration.
   3. `falkordb_blast_radius`: Multi-depth upstream/downstream impact analysis.
@@ -236,6 +236,7 @@ Click **`⚡ Chaos: Merge PR #510`** in the dashboard header. Simulates a live w
   7. `falkordb_decision_lineage`: Architecture decision provenance and RFC tracing.
   8. `falkordb_execute_action`: Run remediation actions against services.
   9. `falkordb_premerge_risk_gate`: Proactive CI/CD pre-merge blast radius gate & circuit-breaker audit.
+  10. `falkordb_community_detection`: Modularity community detection & microservice cluster partitioning.
 
 ---
 
