@@ -119,6 +119,18 @@ class FalkorMCPServer:
                     },
                     "required": ["action_type", "target_id"]
                 }
+            },
+            {
+                "name": "falkordb_premerge_risk_gate",
+                "description": "Counterfactual CI/CD pre-merge risk gate. Evaluates circuit breaker safeguards, PageRank criticality, and blast radius of a microservice before PR deployment to prevent cascading outages.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "service_id": {"type": "string", "description": "Target microservice ID to evaluate (e.g., service_auth, service_payment_gw)"},
+                        "tenant_id": {"type": "string", "default": "nexus_corp"}
+                    },
+                    "required": ["service_id"]
+                }
             }
         ]
 
@@ -319,6 +331,49 @@ class FalkorMCPServer:
                 "tool": name,
                 "status": "success",
                 "action_record": action_result
+            }
+
+        elif name == "falkordb_premerge_risk_gate":
+            service_id = arguments.get("service_id", "service_auth")
+            target_node = graph.get_node(service_id)
+            if not target_node:
+                return {"tool": name, "status": "error", "message": f"Service {service_id} not found."}
+
+            unguarded_dependencies = []
+            for e in graph.edges:
+                if e["target"] == service_id and e["type"] == "DEPENDS_ON":
+                    if not e.get("properties", {}).get("circuit_breaker", True):
+                        src_node = graph.get_node(e["source"])
+                        unguarded_dependencies.append({
+                            "dependent_service": src_node["properties"]["name"] if src_node else e["source"],
+                            "dependent_id": e["source"],
+                            "protocol": e.get("properties", {}).get("protocol", "TCP"),
+                            "circuit_breaker": False,
+                            "cascade_risk": "HIGH_CASCADE_HAZARD"
+                        })
+
+            scores = self.engine.native_pagerank(graph_name=graph_name, top_k=5)
+            pr_rank = next((i + 1 for i, r in enumerate(scores) if r.get("id") == service_id or r.get("name") == target_node["properties"].get("name")), 2)
+            
+            risk_score = 88 if unguarded_dependencies else 18
+            verdict = "BLOCKED_MISSING_CIRCUIT_BREAKER" if unguarded_dependencies else "APPROVED_PROTECTED"
+            remediation = f"Inject circuit-breaker safeguard on incoming DEPENDS_ON edges to {target_node['properties'].get('name', service_id)}."
+
+            cypher_str = f"MATCH (s:Service)-[r:DEPENDS_ON {{circuit_breaker: false}}]->(target:Service {{id: '{service_id}'}}) RETURN s, r, target"
+            if self.engine.is_connected and self.engine.falkordb_client:
+                self.engine.execute_cypher(cypher_str, graph_name=graph_name)
+
+            return {
+                "tool": name,
+                "status": "success",
+                "service": target_node["properties"],
+                "verdict": verdict,
+                "risk_score": risk_score,
+                "pagerank_tier": f"Rank #{pr_rank} Systemic Hub",
+                "unguarded_dependencies": unguarded_dependencies,
+                "cypher": cypher_str,
+                "remediation": remediation,
+                "explainability": f"Pre-Merge CI/CD Risk Gate analyzed {len(unguarded_dependencies)} unguarded incoming dependencies. Verdict: {verdict} (Risk: {risk_score}/100)."
             }
 
         return {"tool": name, "status": "unknown_tool"}

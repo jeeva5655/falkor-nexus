@@ -144,9 +144,12 @@
         <div class="chat-input-container">
           <textarea id="chatInput" placeholder="Ask questions, report incidents, or run multi-agent queries..."></textarea>
           <div class="input-actions">
-            <div class="tenant-indicator">
+            <div class="tenant-indicator" style="display:flex; align-items:center; gap:6px;">
               <span>🏢 Tenant:</span>
-              <strong style="color:var(--text-primary);">nexus_corp</strong>
+              <select id="tenantSelect" style="background:rgba(255,255,255,0.08); color:var(--accent-cyan); border:1px solid var(--border-subtle); border-radius:4px; font-size:0.75rem; padding:3px 6px; font-weight:600; cursor:pointer;">
+                <option value="nexus_corp" selected>nexus_corp — Cloud Fintech</option>
+                <option value="aegis_cyber">aegis_cyber — SecOps & CVE</option>
+              </select>
             </div>
             <button class="btn-primary" id="btnSubmitChat">
               <span>Dispatch Agents</span>
@@ -225,6 +228,26 @@
       <div class="panel-body">
         <!-- Track 01 Explorer -->
         <div class="tab-content active" id="tabTrack1">
+          <!-- Proactive CI/CD Pre-Merge Risk Gate (Track 01 Clincher) -->
+          <div class="algo-card" style="border-color:rgba(245, 158, 11, 0.4); background:rgba(245, 158, 11, 0.05);">
+            <div class="algo-header">
+              <span class="algo-title" style="color:var(--accent-amber);">🛡️ Pre-Merge CI/CD Risk Gate</span>
+              <span class="panel-badge" style="background:rgba(245, 158, 11, 0.2); color:#fbbf24;">Counterfactual</span>
+            </div>
+            <div style="font-size:0.74rem; color:var(--text-secondary); line-height:1.35; margin-bottom:8px;">
+              Traverse upstream dependencies, check for missing circuit breakers, and combine GraphBLAS PageRank + Centrality to block outages before merging PRs.
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn-secondary" id="btnPremergeGate" style="flex:1; justify-content:center; font-size:0.74rem; border-color:rgba(245, 158, 11, 0.5); color:#fbbf24;">
+                🛡️ Audit PR Gate (service_auth)
+              </button>
+              <button class="btn-secondary" id="btnPremergeHeal" style="font-size:0.74rem; border-color:rgba(16, 185, 129, 0.5); color:var(--accent-emerald);" title="Auto-inject circuit breaker in FalkorDB">
+                ⚡ Auto-Heal Edge
+              </button>
+            </div>
+            <div id="premergeResult" style="margin-top:6px; font-size:0.72rem; display:none; padding:6px; background:rgba(0,0,0,0.3); border-radius:4px; line-height:1.35;"></div>
+          </div>
+
           <div class="algo-card">
             <div class="algo-header">
               <span class="algo-title">FalkorDB GraphBLAS PageRank</span>
@@ -248,7 +271,7 @@
           <div class="algo-card">
             <div class="algo-header">
               <span class="algo-title">Model Context Protocol (MCP) Tools</span>
-              <span class="panel-badge">Registered</span>
+              <span class="panel-badge">9 Tools</span>
             </div>
             <div style="font-size:0.74rem; color:var(--text-secondary); line-height:1.4;">
               • <code>falkordb_cypher_query</code><br>
@@ -258,7 +281,8 @@
               • <code>falkordb_centrality</code><br>
               • <code>falkordb_find_expert</code><br>
               • <code>falkordb_decision_lineage</code><br>
-              • <code>falkordb_execute_action</code>
+              • <code>falkordb_execute_action</code><br>
+              • <code>falkordb_premerge_risk_gate</code> [Track 01 CI/CD Gate]
             </div>
           </div>
         </div>
@@ -315,6 +339,21 @@
             <div class="algo-list" id="expertsList">
               <div style="font-size:0.75rem; color:var(--text-muted);">Loading Experts...</div>
             </div>
+          </div>
+
+          <div class="algo-card" style="border-color:rgba(0, 242, 254, 0.4); background:rgba(0, 242, 254, 0.04);">
+            <div class="algo-header">
+              <span class="algo-title" style="color:var(--accent-cyan);">🧠 GraphRAG Live Text &rarr; Graph Extractor</span>
+              <span class="panel-badge" style="background:rgba(0, 242, 254, 0.15); color:var(--accent-cyan);">Unstructured to Graph</span>
+            </div>
+            <div style="font-size:0.73rem; color:var(--text-secondary); line-height:1.35; margin-bottom:6px;">
+              Parse raw postmortems / Slack alerts into typed nodes (<code>Incident</code>, <code>Service</code>, <code>PullRequest</code>, <code>Person</code>) and write edges live into FalkorDB:
+            </div>
+            <textarea id="graphragInputText" style="width:100%; height:55px; background:rgba(0,0,0,0.4); border:1px solid var(--border-subtle); border-radius:4px; color:var(--text-primary); font-family:var(--font-mono); font-size:0.71rem; padding:6px; box-sizing:border-box; resize:vertical;">Postmortem SEV-1: INC-904 outage in service_auth caused by PR #612 authored by Sarah Chen affecting service_payment_gw.</textarea>
+            <button class="btn-primary" id="btnGraphRAGExtract" style="width:100%; justify-content:center; margin-top:6px; font-size:0.74rem;">
+              <span>Extract Entities & Relationships into FalkorDB</span>
+            </button>
+            <div id="graphragResult" style="margin-top:6px; font-size:0.72rem; display:none; padding:6px; background:rgba(0,0,0,0.3); border-radius:4px; line-height:1.35;"></div>
           </div>
 
           <div class="algo-card">

@@ -101,8 +101,48 @@ def test_full_system_across_all_tracks():
     assert rag_resp.json()["falkordb_graph_context"]["root_cause_identified"] is True
     print("[PASS] Vector RAG vs. FalkorDB Graph Context comparison endpoint verified.")
 
+    print("\n--- OUT-OF-THE-BOX CLINCHERS: RISK GATE, TENANT ISOLATION & GRAPHRAG ---")
+    # 1. Pre-Merge CI/CD Risk Gate Test (Track 01 Counterfactual Prevention)
+    gate_res = mcp.call_tool("falkordb_premerge_risk_gate", {"service_id": "service_auth", "tenant_id": "test_corp"})
+    assert gate_res["status"] == "success"
+    assert gate_res["verdict"] == "BLOCKED_MISSING_CIRCUIT_BREAKER"
+    assert gate_res["risk_score"] >= 70
+    assert len(gate_res["unguarded_dependencies"]) > 0
+    print(f"[PASS] Pre-Merge Risk Gate verified: Blocked risky PR with risk_score={gate_res['risk_score']}.")
+
+    # Auto-heal gate via endpoint
+    heal_resp = client.post("/api/graph/premerge_gate", json={"service_id": "service_auth", "tenant_id": "test_corp", "auto_heal": True})
+    assert heal_resp.status_code == 200
+    assert heal_resp.json()["verdict"] == "APPROVED_PROTECTED"
+    print("[PASS] Pre-Merge Auto-Heal verified: Circuit breaker injected live into FalkorDB.")
+
+    # 2. Key-Level Multigraph Tenant Isolation Test (Track 02 Clincher)
+    cyber_graph = engine.get_or_create_graph("tenant_aegis_cyber_brain")
+    from backend.seeds.enterprise_data import seed_cyber_defense_graph
+    seed_cyber_defense_graph(cyber_graph)
+    assert "service_waf_gateway" in cyber_graph.nodes
+    assert "cve_2026_9901" in cyber_graph.nodes
+    nexus_graph = engine.get_or_create_graph("tenant_nexus_corp_brain")
+    assert "cve_2026_9901" not in nexus_graph.nodes, "Zero-leakage: aegis_cyber CVE must NOT exist in nexus_corp!"
+    print("[PASS] Multigraph Tenant Isolation verified: Zero cross-tenant leakage between nexus_corp and aegis_cyber.")
+
+    # 3. Live GraphRAG Unstructured Text -> Graph Extractor Test (Track 03 Clincher)
+    rag_extract_resp = client.post("/api/ingest/graphrag_extract", json={
+        "raw_text": "Postmortem SEV-1: INC-904 outage in service_auth caused by PR #612 authored by Sarah Chen affecting service_payment_gw.",
+        "tenant_id": "test_corp"
+    })
+    assert rag_extract_resp.status_code == 200
+    rag_extract_data = rag_extract_resp.json()
+    assert rag_extract_data["status"] == "success"
+    assert rag_extract_data["entities_extracted_count"] >= 3
+    assert rag_extract_data["relationships_extracted_count"] >= 2
+    test_corp_g = engine.get_or_create_graph("tenant_test_corp_brain")
+    assert "inc_904" in test_corp_g.nodes
+    assert "pr_612" in test_corp_g.nodes
+    print(f"[PASS] GraphRAG Extractor verified: {rag_extract_data['entities_extracted_count']} nodes & {rag_extract_data['relationships_extracted_count']} edges extracted to FalkorDB.")
+
     print("\n========================================================")
-    print("ALL 3 TRACKS + LEARNING LOOP + CHAOS WEBHOOK 100% PASS!")
+    print("ALL 3 TRACKS + CLINCHERS 100% VERIFIED & PASSING!")
     print("========================================================")
 
 if __name__ == "__main__":

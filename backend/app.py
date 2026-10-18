@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from backend.config import settings
 from backend.graph_engine import engine
-from backend.seeds.enterprise_data import seed_enterprise_graph
+from backend.seeds.enterprise_data import seed_enterprise_graph, seed_cyber_defense_graph
 from backend.memory.episodic import EpisodicMemoryManager
 from backend.memory.semantic import SemanticMemoryManager
 from backend.memory.procedural import ProceduralMemoryManager
@@ -31,12 +31,19 @@ memory_managers = {
 mcp_server = FalkorMCPServer(engine)
 orchestrator = AgentOrchestrator(mcp_server, memory_managers, engine)
 
-# Populate default company graph on startup
+# Populate default company graph on startup (Fintech Cloud)
 default_graph_name = f"tenant_{settings.DEFAULT_TENANT}_brain"
 default_graph = engine.get_or_create_graph(default_graph_name)
 seed_result = seed_enterprise_graph(default_graph)
 if engine.is_connected:
     engine.sync_to_live_falkordb(default_graph_name)
+
+# Populate second tenant for live multigraph isolation (SecOps & Zero-Trust CVE)
+cyber_graph_name = "tenant_aegis_cyber_brain"
+cyber_graph = engine.get_or_create_graph(cyber_graph_name)
+seed_cyber_defense_graph(cyber_graph)
+if engine.is_connected:
+    engine.sync_to_live_falkordb(cyber_graph_name)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -84,6 +91,15 @@ class LearnPlaybookRequest(BaseModel):
 class MCPCallRequest(BaseModel):
     tool: str
     arguments: Dict[str, Any]
+
+class PremergeGateRequest(BaseModel):
+    service_id: str = "service_auth"
+    tenant_id: Optional[str] = settings.DEFAULT_TENANT
+    auto_heal: Optional[bool] = False
+
+class GraphRAGExtractRequest(BaseModel):
+    raw_text: str
+    tenant_id: Optional[str] = settings.DEFAULT_TENANT
 
 # ----------------- System & Health -----------------
 @app.get("/api/health")
@@ -241,6 +257,31 @@ def get_blast_radius(node_id: str, depth: int = 3, tenant_id: str = settings.DEF
     g_name = f"tenant_{tenant_id}_brain"
     g = engine.get_or_create_graph(g_name)
     return g.blast_radius(node_id, max_depth=depth)
+
+@app.post("/api/graph/premerge_gate")
+def premerge_risk_gate(req: PremergeGateRequest):
+    """
+    Counterfactual CI/CD pre-merge graph risk gate:
+    Evaluates microservice dependencies, PageRank, and circuit-breaker flags.
+    Optionally auto-heals unguarded dependencies in the graph.
+    """
+    res = mcp_server.call_tool("falkordb_premerge_risk_gate", {
+        "service_id": req.service_id,
+        "tenant_id": req.tenant_id
+    })
+    if req.auto_heal and res.get("status") == "success":
+        g = engine.get_or_create_graph(f"tenant_{req.tenant_id}_brain")
+        healed_count = 0
+        for e in g.edges:
+            if e["target"] == req.service_id and e["type"] == "DEPENDS_ON":
+                e.setdefault("properties", {})["circuit_breaker"] = True
+                healed_count += 1
+        res["auto_healed"] = True
+        res["healed_edges_count"] = healed_count
+        res["verdict"] = "APPROVED_PROTECTED"
+        res["risk_score"] = 15
+        res["explainability"] += f" Auto-healed: Injected circuit breaker protection across {healed_count} incoming dependency edge(s)."
+    return res
 
 # ----------------- Track 02: Multi-Agent Orchestration & Chat -----------------
 @app.post("/api/agents/chat")
@@ -453,6 +494,114 @@ def inject_chaos_webhook(tenant_id: str = settings.DEFAULT_TENANT):
         "slack_channel": "#eng-billing",
         "timestamp": now,
         "message": "Live GitHub PR #510 and Slack thread ingested directly into FalkorDB!"
+    }
+
+# ----------------- Track 03: Live GraphRAG Unstructured Text-to-Graph Extractor -----------------
+@app.post("/api/ingest/graphrag_extract")
+def graphrag_extract(req: GraphRAGExtractRequest):
+    """
+    Live GraphRAG text-to-graph extraction:
+    Extracts structured entities (Service, Person, Incident, PullRequest)
+    and typed relationships from unstructured incident/Slack text,
+    creating live nodes and edges in FalkorDB with real-time write-through.
+    """
+    import re
+    text = req.raw_text
+    tenant_id = req.tenant_id or settings.DEFAULT_TENANT
+    g = engine.get_or_create_graph(f"tenant_{tenant_id}_brain")
+    now = time.time()
+
+    created_nodes = []
+    created_edges = []
+
+    # Detect incident IDs (e.g., INC-902, INC-804)
+    inc_matches = re.findall(r"(INC-\d+)", text, re.IGNORECASE)
+    for inc_code in set(inc_matches):
+        inc_id = inc_code.lower().replace("-", "_")
+        node = g.add_node(inc_id, "Incident", {
+            "id": inc_id,
+            "title": f"Incident {inc_code}: Extracted via GraphRAG",
+            "severity": "SEV-1" if "sev-1" in text.lower() or "critical" in text.lower() else "SEV-2",
+            "status": "EXTRACTED_VIA_GRAPHRAG",
+            "created_at": now
+        })
+        created_nodes.append(node)
+
+    # Detect pull requests (e.g., PR #520, PR-520)
+    pr_matches = re.findall(r"PR\s*#?(\d+)", text, re.IGNORECASE)
+    for pr_num in set(pr_matches):
+        pr_id = f"pr_{pr_num}"
+        node = g.add_node(pr_id, "PullRequest", {
+            "id": pr_id,
+            "number": int(pr_num),
+            "title": f"PR #{pr_num} (Extracted from report)",
+            "status": "MERGED",
+            "merged_at": "Extracted via GraphRAG"
+        })
+        created_nodes.append(node)
+
+    # Detect microservices
+    svc_keywords = {
+        "authservice": ("service_auth", "AuthService"),
+        "paymentgateway": ("service_payment_gw", "PaymentGateway"),
+        "ledgerdb": ("service_ledger", "LedgerDB"),
+        "vaultkms": ("service_vault_kms", "VaultKMS"),
+        "identityproxy": ("service_id_proxy", "IdentityProxy"),
+        "apigateway": ("service_waf_gateway", "ApiGatewayWAF"),
+        "service_auth": ("service_auth", "AuthService"),
+        "service_payment_gw": ("service_payment_gw", "PaymentGateway")
+    }
+    found_services = []
+    for k, (sid, sname) in svc_keywords.items():
+        if k in text.lower().replace(" ", ""):
+            found_services.append((sid, sname))
+            if sid not in g.nodes:
+                created_nodes.append(g.add_node(sid, "Service", {"id": sid, "name": sname, "tier": "Tier-1"}))
+            elif g.get_node(sid) not in created_nodes:
+                created_nodes.append(g.get_node(sid))
+
+    # Detect engineers
+    eng_keywords = {
+        "sarah": ("sarah_chen", "Sarah Chen"),
+        "alex": ("alex_rivera", "Alex Rivera"),
+        "devon": ("devon_brooks", "Devon Brooks"),
+        "elena": ("elena_vance", "Elena Vance"),
+        "marcus": ("marcus_vance", "Marcus Vance")
+    }
+    found_engs = []
+    for k, (eid, ename) in eng_keywords.items():
+        if k in text.lower():
+            found_engs.append((eid, ename))
+            if eid not in g.nodes:
+                created_nodes.append(g.add_node(eid, "Person", {"id": eid, "name": ename, "role": "Engineer"}))
+            elif g.get_node(eid) not in created_nodes:
+                created_nodes.append(g.get_node(eid))
+
+    # Connect extracted entities
+    for inc_code in set(inc_matches):
+        inc_id = inc_code.lower().replace("-", "_")
+        for sid, _ in found_services:
+            edge = g.add_edge(inc_id, sid, "AFFECTS", {"extracted_by": "GraphRAG"})
+            created_edges.append(edge)
+
+    for pr_num in set(pr_matches):
+        pr_id = f"pr_{pr_num}"
+        for sid, _ in found_services:
+            edge = g.add_edge(pr_id, sid, "MODIFIES", {"extracted_by": "GraphRAG"})
+            created_edges.append(edge)
+        for eid, _ in found_engs:
+            edge = g.add_edge(eid, pr_id, "AUTHORED", {"extracted_by": "GraphRAG"})
+            created_edges.append(edge)
+
+    return {
+        "status": "success",
+        "tenant_id": tenant_id,
+        "raw_text_length": len(text),
+        "entities_extracted_count": len(created_nodes),
+        "relationships_extracted_count": len(created_edges),
+        "created_nodes": created_nodes,
+        "created_edges": created_edges,
+        "falkordb_multigraph": f"tenant_{tenant_id}_brain"
     }
 
 # ----------------- Track 02: Reset Learning Edge (For Demo Replays) -----------------

@@ -361,3 +361,132 @@ def seed_enterprise_graph(graph):
         "total_nodes": len(graph.nodes),
         "total_edges": len(graph.edges)
     }
+
+
+def seed_cyber_defense_graph(graph):
+    """
+    Populates tenant_aegis_cyber_brain with a SecOps, Zero-Trust & CVE Triage graph:
+    Services: ApiGatewayWAF, VaultKMS, IdentityProxy, ThreatIntelStream, AuditLogger
+    Persons: Elena Vance (SecOps Lead), Devon Brooks (Zero-Trust Architect), Marcus Kane (Incident Handler)
+    Teams: team_cloudsec (Cloud Security), team_redteam (Offensive Sec)
+    Incidents: cve_2026_9901 (Critical OpenSSL Buffer Overflow RCE)
+    PRs, Commits, RFCs, Playbooks.
+    """
+    # 1. Teams
+    teams = [
+        {"id": "team_cloudsec", "name": "Cloud Security Operations", "dept": "InfoSec", "slack": "#secops-war-room", "lead": "elena_vance"},
+        {"id": "team_redteam", "name": "Offensive Security & Red Team", "dept": "Cyber Defense", "slack": "#red-ops", "lead": "devon_brooks"}
+    ]
+    for t in teams:
+        graph.add_node(t["id"], "Team", t)
+
+    # 2. Persons
+    people = [
+        {"id": "elena_vance", "name": "Elena Vance", "role": "Principal SecOps Commander", "email": "elena.vance@aegiscyber.io", "on_call": True, "skills": ["CVE Triage", "Firewall Rules", "Zero-Trust", "SIEM"]},
+        {"id": "devon_brooks", "name": "Devon Brooks", "role": "Staff Zero-Trust Architect", "email": "devon.brooks@aegiscyber.io", "on_call": True, "skills": ["mTLS", "Vault", "Key Management", "FalkorDB"]},
+        {"id": "marcus_kane", "name": "Marcus Kane", "role": "Senior Threat Analyst", "email": "marcus.kane@aegiscyber.io", "on_call": False, "skills": ["Network Forensics", "WAF Policy", "Mitre ATT&CK"]}
+    ]
+    for p in people:
+        graph.add_node(p["id"], "Person", p)
+
+    graph.add_edge("elena_vance", "team_cloudsec", "MEMBER_OF", {"role": "Lead"})
+    graph.add_edge("devon_brooks", "team_cloudsec", "MEMBER_OF", {"role": "Architect"})
+    graph.add_edge("marcus_kane", "team_redteam", "MEMBER_OF", {"role": "Senior Analyst"})
+
+    # 3. Services
+    services = [
+        {"id": "service_waf_gateway", "name": "ApiGatewayWAF", "tier": "Tier-1", "language": "Rust", "health": "DEGRADED", "critical": True, "sla": "99.999%"},
+        {"id": "service_vault_kms", "name": "VaultKMS", "tier": "Tier-1", "language": "Go", "health": "HEALTHY", "critical": True, "sla": "99.999%"},
+        {"id": "service_id_proxy", "name": "IdentityProxy", "tier": "Tier-1", "language": "C++", "health": "CRITICAL_FAILING", "critical": True, "sla": "99.99%"},
+        {"id": "service_threat_stream", "name": "ThreatIntelStream", "tier": "Tier-2", "language": "Python", "health": "HEALTHY", "critical": False, "sla": "99.5%"},
+        {"id": "service_audit_logger", "name": "AuditLogger", "tier": "Tier-1", "language": "Go", "health": "HEALTHY", "critical": True, "sla": "99.9%"}
+    ]
+    for s in services:
+        graph.add_node(s["id"], "Service", s)
+
+    # Ownership
+    graph.add_edge("team_cloudsec", "service_waf_gateway", "OWNS", {"ownership_level": "Primary"})
+    graph.add_edge("team_cloudsec", "service_id_proxy", "OWNS", {"ownership_level": "Primary"})
+    graph.add_edge("team_cloudsec", "service_vault_kms", "OWNS", {"ownership_level": "Primary"})
+    graph.add_edge("team_redteam", "service_threat_stream", "OWNS", {"ownership_level": "Advisory"})
+
+    # Dependencies
+    graph.add_edge("service_waf_gateway", "service_id_proxy", "DEPENDS_ON", {"protocol": "mTLS", "circuit_breaker": False})
+    graph.add_edge("service_id_proxy", "service_vault_kms", "DEPENDS_ON", {"protocol": "gRPC", "circuit_breaker": True})
+    graph.add_edge("service_waf_gateway", "service_threat_stream", "DEPENDS_ON", {"protocol": "AsyncEvent", "circuit_breaker": True})
+    graph.add_edge("service_id_proxy", "service_audit_logger", "DEPENDS_ON", {"protocol": "TCP", "circuit_breaker": True})
+
+    # On Call
+    graph.add_edge("elena_vance", "service_waf_gateway", "ON_CALL_FOR", {"shift": "Primary 24/7"})
+    graph.add_edge("devon_brooks", "service_id_proxy", "ON_CALL_FOR", {"shift": "Primary Architect"})
+
+    # 4. Incident CVE
+    cve = {
+        "id": "cve_2026_9901",
+        "title": "CVE-2026-9901: OpenSSL Buffer Overflow RCE in IdentityProxy mTLS Handshake",
+        "severity": "CRITICAL_SEV1",
+        "status": "ACTIVE_INVESTIGATION",
+        "started_at": "2026-10-18T18:30:00Z",
+        "cvss_score": 9.8,
+        "symptoms": "Corrupted ASN.1 parser triggers stack overflow and crash in IdentityProxy handshake"
+    }
+    graph.add_node(cve["id"], "Incident", cve)
+    graph.add_edge("cve_2026_9901", "service_id_proxy", "AFFECTS", {"impact": "Direct Vulnerability Exploit"})
+
+    # 5. Pull Request & Commit
+    pr = {
+        "id": "pr_sec_912",
+        "number": 912,
+        "title": "fix(ssl): patch OpenSSL 3.4.1 ASN.1 parsing memory corruption",
+        "status": "MERGED",
+        "merged_at": "2026-10-18T17:45:00Z",
+        "author_id": "devon_brooks",
+        "risk_score": 0.88
+    }
+    graph.add_node(pr["id"], "PullRequest", pr)
+    graph.add_edge(pr["id"], "service_id_proxy", "MODIFIES", {})
+    graph.add_edge("devon_brooks", pr["id"], "AUTHORED", {})
+
+    commit = {
+        "id": "commit_sec_f99a",
+        "hash": "f99a01b",
+        "message": "fix(asn1): validate buffer length before memcpy",
+        "author_id": "devon_brooks"
+    }
+    graph.add_node(commit["id"], "Commit", commit)
+    graph.add_edge(pr["id"], commit["id"], "CONTAINS", {})
+    graph.add_edge("cve_2026_9901", commit["id"], "TRIGGERED_BY", {})
+
+    # 6. Policy & RFC
+    rfc = {
+        "id": "rfc_sec_201",
+        "title": "RFC-201: Zero-Trust Strict mTLS Boundary & KMS Ephemeral Certificates",
+        "status": "APPROVED",
+        "author": "Devon Brooks"
+    }
+    graph.add_node(rfc["id"], "RFC", rfc)
+    graph.add_edge("devon_brooks", rfc["id"], "AUTHORED", {})
+
+    # 7. Playbook
+    playbook = {
+        "id": "plb_cve_containment",
+        "name": "Zero-Trust Active CVE Quarantine & Rollback SOP",
+        "domain": "Cloud Security",
+        "trigger_condition": "cvss > 9.0 && cve_active == True",
+        "severity": "CRITICAL"
+    }
+    graph.add_node(playbook["id"], "Playbook", playbook)
+    step1 = {"id": "step_cve_1", "step_number": 1, "action_name": "Quarantine Vulnerable Pods", "command": "EXECUTE waf.block_traffic(service_id='service_id_proxy')"}
+    step2 = {"id": "step_cve_2", "step_number": 2, "action_name": "Revoke mTLS Intermediate Certs", "command": "CALL vault.revoke_certs('intermediate_ca')"}
+    graph.add_node(step1["id"], "PlaybookStep", step1)
+    graph.add_node(step2["id"], "PlaybookStep", step2)
+    graph.add_edge("plb_cve_containment", step1["id"], "FIRST_STEP", {})
+    graph.add_edge(step1["id"], step2["id"], "NEXT_STEP", {})
+
+    return {
+        "status": "seeded",
+        "tenant": "aegis_cyber",
+        "total_nodes": len(graph.nodes),
+        "total_edges": len(graph.edges)
+    }
+

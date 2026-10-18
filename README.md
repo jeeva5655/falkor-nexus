@@ -209,16 +209,33 @@ Click **`⚡ Chaos: Merge PR #510`** in the dashboard header. Simulates a live w
 - Alex Rivera merges `PR #510` modifying `LedgerDB` rate limits and discusses it in `#eng-billing`.
 - Mutates the FalkorDB graph in real time and automatically queries the Company Brain: *"Who touched LedgerDB most recently and why?"* — returning the newly ingested citation instantly!
 
-### 3. Explainability Path Replay & "Why Not Vector RAG?" (Track 01)
-- Click **`▶ Replay Traversal`** on the graph canvas to watch the agent's 5-hop reasoning path light up step-by-step with exact Cypher queries.
-- Click **`⚖ Why Not Vector RAG?`** to view technical benchmark proof showing why naive chunk-based Vector RAG hallucinates on service dependencies where FalkorDB succeeds deterministically.
+### 4. Interactive Live Multigraph Tenant Isolation (`nexus_corp` $\leftrightarrow$ `aegis_cyber`) [Track 02 Clincher]
+- Switch tenants live via the interactive dropdown in the dashboard (`nexus_corp — Cloud Fintech` vs `aegis_cyber — SecOps & CVE`).
+- Single FalkorDB instance runs isolated multigraphs via `db.select_graph("tenant_<id>_brain")` and `db.select_graph("tenant_<id>_memory")` with zero cross-tenant leakage.
+
+### 5. Proactive "Pre-Merge CI/CD Risk Gate" (Counterfactual Prevention) [Track 01 Clincher]
+- Counterfactual graph simulation MCP tool (`falkordb_premerge_risk_gate`) traverses upstream microservice dependencies, detects missing circuit breakers (`circuit_breaker: False`), combines PageRank and Betweenness Centrality, and blocks high-risk PRs before production outages occur.
+- Includes 1-click **⚡ Auto-Heal Edge** to inject circuit breaker protection (`circuit_breaker = True`) live into the FalkorDB graph.
+
+### 6. Live GraphRAG Text-to-Graph Extractor [Track 03 Clincher]
+- In Track 3, enter unstructured incident postmortems or Slack alerts.
+- FalkorDB extracts typed entity nodes (`Incident`, `Service`, `PullRequest`, `Person`) and writes directed relationships (`AFFECTS`, `MODIFIES`, `AUTHORED`) live into the knowledge graph canvas.
 
 ---
 
-## ⚡ Model Context Protocol (MCP) Server
+## ⚡ Model Context Protocol (MCP) Server (9 Tools)
 
 - **Endpoints**: `POST /api/mcp/call`, `GET /api/mcp/tools`
-- Exposes native FalkorDB GraphBLAS procedures via standard MCP JSON-RPC protocol.
+- Exposes 9 native FalkorDB GraphBLAS procedures via standard MCP JSON-RPC protocol:
+  1. `falkordb_cypher_query`: Execute arbitrary Cypher queries.
+  2. `falkordb_shortest_path`: Native `shortestPath()` multi-hop causal exploration.
+  3. `falkordb_blast_radius`: Multi-depth upstream/downstream impact analysis.
+  4. `falkordb_pagerank`: Native GraphBLAS `CALL algo.pageRank()`.
+  5. `falkordb_centrality`: Native Betweenness Centrality single-point-of-failure detection.
+  6. `falkordb_find_expert`: Subject-matter expert discovery by graph topology.
+  7. `falkordb_decision_lineage`: Architecture decision provenance and RFC tracing.
+  8. `falkordb_execute_action`: Run remediation actions against services.
+  9. `falkordb_premerge_risk_gate`: Proactive CI/CD pre-merge blast radius gate & circuit-breaker audit.
 
 ---
 

@@ -6,6 +6,7 @@
 
 let visualizer = null;
 let currentSessionId = 'session_' + Math.random().toString(36).substring(2, 9);
+let currentTenantId = 'nexus_corp';
 let lastTraversalPath = [];
 const API_BASE = window.location.origin;
 
@@ -17,6 +18,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadGraphData();
   await loadTrack1Algorithms();
   setupTabNavigation();
+  setupTenantSwitcher();
+  setupPremergeGate();
+  setupGraphRAGExtractor();
   setupScenarioButtons();
   setupTwoRunLoop();
   setupTraversalReplay();
@@ -65,7 +69,7 @@ async function checkSystemHealth() {
 
 async function loadGraphData() {
   try {
-    const res = await fetch(`${API_BASE}/api/graph/data`);
+    const res = await fetch(`${API_BASE}/api/graph/data?tenant_id=${encodeURIComponent(currentTenantId)}`);
     const data = await res.json();
     visualizer.loadData(data);
     document.getElementById('nodeCount').textContent = data.stats.total_nodes;
@@ -93,7 +97,7 @@ async function handleChatSubmit() {
       body: JSON.stringify({
         query: query,
         session_id: currentSessionId,
-        tenant_id: 'nexus_corp'
+        tenant_id: currentTenantId
       })
     });
 
@@ -388,20 +392,20 @@ function setupTabNavigation() {
 // Track 01 Tab: PageRank & Centrality
 async function loadTrack1Algorithms() {
   try {
-    const prRes = await fetch(`${API_BASE}/api/graph/algorithms/pagerank?top_k=5`);
+    const prRes = await fetch(`${API_BASE}/api/graph/algorithms/pagerank?tenant_id=${encodeURIComponent(currentTenantId)}&top_k=5`);
     const prData = await prRes.json();
     const prList = document.getElementById('pagerankList');
-    prList.innerHTML = prData.results.map(r => `
+    prList.innerHTML = (prData.results || []).map(r => `
       <div class="algo-item">
         <span>${r.name} (${r.tier || r.label})</span>
         <span class="algo-score">${r.score}</span>
       </div>
     `).join('');
 
-    const centRes = await fetch(`${API_BASE}/api/graph/algorithms/centrality`);
+    const centRes = await fetch(`${API_BASE}/api/graph/algorithms/centrality?tenant_id=${encodeURIComponent(currentTenantId)}`);
     const centData = await centRes.json();
     const centList = document.getElementById('centralityList');
-    centList.innerHTML = centData.betweenness_bottlenecks.map(b => `
+    centList.innerHTML = (centData.betweenness_bottlenecks || []).map(b => `
       <div class="algo-item">
         <span>${b.name}</span>
         <span class="algo-score" style="color:var(--accent-rose);">${b.score}</span>
@@ -415,26 +419,34 @@ async function loadTrack1Algorithms() {
 // Track 02 Tab: Memory & Procedural Playbooks
 async function loadTrack2Memory() {
   try {
-    const res = await fetch(`${API_BASE}/api/memory/summary`);
+    const res = await fetch(`${API_BASE}/api/memory/summary?tenant_id=${encodeURIComponent(currentTenantId)}`);
     const data = await res.json();
-    document.getElementById('memEpisodicCount').textContent = data.episodic_episodes_count;
-    document.getElementById('memSessionsCount').textContent = data.agent_sessions_count;
-    document.getElementById('memTransitionsCount').textContent = data.state_transitions_count;
-    document.getElementById('memPlaybooksCount').textContent = data.procedural_playbooks_count;
+    document.getElementById('memEpisodicCount').textContent = data.episodic_episodes_count || 0;
+    document.getElementById('memSessionsCount').textContent = data.agent_sessions_count || 0;
+    document.getElementById('memTransitionsCount').textContent = data.state_transitions_count || 0;
+    document.getElementById('memPlaybooksCount').textContent = data.procedural_playbooks_count || 0;
 
     // Load Playbook Workflow
-    const pbRes = await fetch(`${API_BASE}/api/memory/procedural/playbooks/plb_sev1_triage`);
-    const pbData = await pbRes.json();
     const chainEl = document.getElementById('playbookChain');
-    chainEl.innerHTML = pbData.steps.map(s => `
-      <div class="playbook-step-node">
-        <div class="step-num-badge">${s.step_number}</div>
-        <div class="step-content">
-          <div class="step-title">${s.action_name}</div>
-          <div class="step-cmd">${s.command}</div>
-        </div>
-      </div>
-    `).join('');
+    try {
+      const pbRes = await fetch(`${API_BASE}/api/memory/procedural/playbooks/plb_sev1_triage?tenant_id=${encodeURIComponent(currentTenantId)}`);
+      if (pbRes.ok) {
+        const pbData = await pbRes.json();
+        chainEl.innerHTML = (pbData.steps || []).map(s => `
+          <div class="playbook-step-node">
+            <div class="step-num-badge">${s.step_number}</div>
+            <div class="step-content">
+              <div class="step-title">${s.action_name}</div>
+              <div class="step-cmd">${s.command}</div>
+            </div>
+          </div>
+        `).join('');
+      } else {
+        chainEl.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); padding:8px;">Standard triage playbook loaded for ${currentTenantId}.</div>`;
+      }
+    } catch (err) {
+      chainEl.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); padding:8px;">Playbook online.</div>`;
+    }
   } catch (e) {
     console.error(e);
   }
@@ -443,12 +455,13 @@ async function loadTrack2Memory() {
 // Track 03 Tab: Company Brain Experts
 async function loadTrack3CompanyBrain() {
   try {
+    const targetService = currentTenantId === 'aegis_cyber' ? 'service_waf_gateway' : 'service_auth';
     const res = await fetch(`${API_BASE}/api/mcp/call`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tool: 'falkordb_find_expert',
-        arguments: { service_id: 'service_auth' }
+        arguments: { service_id: targetService, tenant_id: currentTenantId }
       })
     });
     const data = await res.json();
@@ -461,7 +474,7 @@ async function loadTrack3CompanyBrain() {
         </div>
         <span class="panel-badge" style="background:rgba(0,242,254,0.15); color:var(--accent-cyan);">Expert</span>
       </div>
-    `).join('');
+    `).join('') || `<div style="font-size:0.75rem; color:var(--text-muted); padding:6px;">No direct expert found for ${targetService}.</div>`;
   } catch (e) {
     console.error(e);
   }
@@ -480,7 +493,7 @@ function setupCypherConsole() {
       const res = await fetch(`${API_BASE}/api/graph/cypher`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cypher: query, tenant_id: 'nexus_corp' })
+        body: JSON.stringify({ cypher: query, tenant_id: currentTenantId })
       });
       const data = await res.json();
       outEl.textContent = JSON.stringify(data.results, null, 2);
@@ -574,6 +587,141 @@ function setupConnectionModal() {
     } else {
       msgEl.style.color = 'var(--accent-rose)';
       msgEl.textContent = data.message;
+    }
+  });
+}
+
+// ----------------- Multi-Graph Tenant Switcher (Track 02 Clincher) -----------------
+function setupTenantSwitcher() {
+  const select = document.getElementById('tenantSelect');
+  if (!select) return;
+  select.addEventListener('change', async (e) => {
+    currentTenantId = e.target.value;
+    console.log(`[FalkorDB Multi-Tenant] Active tenant switched to: ${currentTenantId}`);
+
+    visualizer.clearHighlights();
+    await loadGraphData();
+    visualizer.resetView();
+
+    const activeTab = document.querySelector('.tab-btn.active')?.getAttribute('data-tab');
+    if (activeTab === 'tabTrack1') await loadTrack1Algorithms();
+    if (activeTab === 'tabTrack2') await loadTrack2Memory();
+    if (activeTab === 'tabTrack3') await loadTrack3CompanyBrain();
+  });
+}
+
+// ----------------- Proactive Pre-Merge CI/CD Risk Gate (Track 01 Clincher) -----------------
+function setupPremergeGate() {
+  const btnAudit = document.getElementById('btnPremergeGate');
+  const btnHeal = document.getElementById('btnPremergeHeal');
+  const resEl = document.getElementById('premergeResult');
+  if (!btnAudit) return;
+
+  btnAudit.addEventListener('click', async () => {
+    btnAudit.disabled = true;
+    btnAudit.textContent = 'Auditing Graph...';
+    try {
+      const targetService = currentTenantId === 'aegis_cyber' ? 'service_waf_gateway' : 'service_auth';
+      const res = await fetch(`${API_BASE}/api/graph/premerge_gate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service_id: targetService, tenant_id: currentTenantId, auto_heal: false })
+      });
+      const data = await res.json();
+      resEl.style.display = 'block';
+
+      if (data.verdict === 'BLOCKED_MISSING_CIRCUIT_BREAKER') {
+        resEl.style.borderLeft = '3px solid var(--accent-rose)';
+        resEl.innerHTML = `
+          <div style="font-weight:700; color:var(--accent-rose); margin-bottom:4px;">❌ PR BLOCKED (Risk: ${data.risk_score}/100)</div>
+          <div style="color:var(--text-primary); font-size:0.71rem;">${data.explainability}</div>
+          <div style="color:var(--accent-amber); font-size:0.68rem; margin-top:4px;"><strong>Graph Gate:</strong> ${data.recommendation}</div>
+        `;
+        visualizer.highlightPath(['service_payment_gw', 'service_auth', 'service_user_dir']);
+      } else {
+        resEl.style.borderLeft = '3px solid var(--accent-emerald)';
+        resEl.innerHTML = `
+          <div style="font-weight:700; color:var(--accent-emerald); margin-bottom:4px;">✅ PR APPROVED (Risk: ${data.risk_score || 0}/100)</div>
+          <div style="color:var(--text-primary); font-size:0.71rem;">${data.explainability || 'All dependency edges protected.'}</div>
+        `;
+      }
+    } catch (e) {
+      resEl.style.display = 'block';
+      resEl.innerHTML = `<span style="color:var(--accent-rose);">Error running risk gate: ${e.message}</span>`;
+    } finally {
+      btnAudit.disabled = false;
+      btnAudit.textContent = '🛡️ Audit PR Gate (service_auth)';
+    }
+  });
+
+  btnHeal.addEventListener('click', async () => {
+    btnHeal.disabled = true;
+    btnHeal.textContent = 'Auto-Healing...';
+    try {
+      const targetService = currentTenantId === 'aegis_cyber' ? 'service_waf_gateway' : 'service_auth';
+      const res = await fetch(`${API_BASE}/api/graph/premerge_gate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service_id: targetService, tenant_id: currentTenantId, auto_heal: true })
+      });
+      const data = await res.json();
+      resEl.style.display = 'block';
+      resEl.style.borderLeft = '3px solid var(--accent-emerald)';
+      resEl.innerHTML = `
+        <div style="font-weight:700; color:var(--accent-emerald); margin-bottom:4px;">⚡ AUTO-HEALED: ${data.healed_edges_count || 1} Edge(s) Protected</div>
+        <div style="color:var(--text-primary); font-size:0.71rem;">${data.explainability}</div>
+        <div style="color:var(--accent-cyan); font-size:0.68rem; margin-top:4px;">FalkorDB graph updated: circuit_breaker=True set. PR is now safe to merge!</div>
+      `;
+      await loadGraphData();
+    } catch (e) {
+      alert('Error healing graph edge: ' + e.message);
+    } finally {
+      btnHeal.disabled = false;
+      btnHeal.textContent = '⚡ Auto-Heal Edge';
+    }
+  });
+}
+
+// ----------------- Live GraphRAG Unstructured Text -> Graph Extractor (Track 03 Clincher) -----------------
+function setupGraphRAGExtractor() {
+  const btn = document.getElementById('btnGraphRAGExtract');
+  const input = document.getElementById('graphragInputText');
+  const resEl = document.getElementById('graphragResult');
+  if (!btn || !input) return;
+
+  btn.addEventListener('click', async () => {
+    const rawText = input.value.trim();
+    if (!rawText) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Extracting Graph Entities...';
+    try {
+      const res = await fetch(`${API_BASE}/api/ingest/graphrag_extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raw_text: rawText, tenant_id: currentTenantId })
+      });
+      const data = await res.json();
+      resEl.style.display = 'block';
+      resEl.style.borderLeft = '3px solid var(--accent-cyan)';
+      resEl.innerHTML = `
+        <div style="font-weight:700; color:var(--accent-cyan); margin-bottom:4px;">✨ GraphRAG Extraction Committed to FalkorDB</div>
+        <div style="color:var(--text-primary); font-size:0.71rem;">
+          Created <strong>${data.entities_extracted_count}</strong> node(s) and <strong>${data.relationships_extracted_count}</strong> edge(s) in <code>${data.falkordb_multigraph}</code>.
+        </div>
+      `;
+
+      await loadGraphData();
+      const newIds = (data.created_nodes || []).map(n => n.id);
+      if (newIds.length > 0) {
+        visualizer.highlightPath(newIds);
+      }
+    } catch (e) {
+      resEl.style.display = 'block';
+      resEl.innerHTML = `<span style="color:var(--accent-rose);">Error extracting entities: ${e.message}</span>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Extract Entities & Relationships into FalkorDB';
     }
   });
 }
